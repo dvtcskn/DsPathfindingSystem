@@ -3,16 +3,14 @@
 
 This plugin provides all the basic functionality for grid based pathfinding. Hexagon and square grid is supported. There is blueprint support but the performance is poor. Use blueprint for prototyping only.
 
-Technical Details
 Features:
-
-Hexagon and square grid support
-Grid based point to point pathfinding system (A*)
-Grid based search paths in range
-Diagonal
-Blueprint support
-PathFollowingComponent and AIController for grid movement <NEW!>
-Runtime
+* Hexagon and square grid support
+* Grid based point to point pathfinding system (A*)
+* Grid based search paths in range
+* Diagonal
+* Blueprint support
+* PathFollowingComponent and AIController for grid movement
+* Runtime
 
 ![1-720-b01161e1a8d614e936c7b768bf2320e2](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/8e517aad-fbf1-47e2-bb81-b2f143cf972a)
 ![4-720-ea50247f0ae5e03a132798a5e014b8bc](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/11adc078-f054-4632-9087-7ff481d3ea78)
