@@ -13,7 +13,8 @@ Diagonal
 Blueprint support
 PathFollowingComponent and AIController for grid movement <NEW!>
 Runtime
-![2-1920x1080-38f0b3b9db748359352d4655406c0b2e](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/f9c74419-c7ca-467c-b1b5-f5b618b7620c)
-![1-1920x1080-b01161e1a8d614e936c7b768bf2320e2](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/610aa816-9758-47ca-a7f6-a600434f414a)
-![4-1920x1080-ea50247f0ae5e03a132798a5e014b8bc](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/869c84e1-f4c7-4acf-96aa-57eb2a98d975)
-![3-1920x1080-d91b2092ae4aac0923340ebc312dafc2](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/25dea53e-8286-4b3a-927f-51069a2b9766)
+
+![4-720-ea50247f0ae5e03a132798a5e014b8bc](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/11adc078-f054-4632-9087-7ff481d3ea78)
+![3-720-d91b2092ae4aac0923340ebc312dafc2](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/602e863f-354a-4288-88c8-71e54bc4c5ba)
+![2-720-38f0b3b9db748359352d4655406c0b2e](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/1c84dd4e-8b4b-4dd0-9847-1a4aa04be4a4)
+![1-720-b01161e1a8d614e936c7b768bf2320e2](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/8e517aad-fbf1-47e2-bb81-b2f143cf972a)
