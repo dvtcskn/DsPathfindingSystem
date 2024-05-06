@@ -1,20 +1,14 @@
-/*
-* DsPathfindingSystem
-* Plugin code
-* Copyright (c) 2023 Davut Coşkun
-* All Rights Reserved.
-*/
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Components/HierarchicalInstancedStaticMeshComponent.h"	
-#include "Runtime/Engine/Classes/Engine/StaticMesh.h"
 #include "Components/BoxComponent.h"
 #include "Grid.generated.h"
 
 DECLARE_STATS_GROUP(TEXT("Grid"), STATGROUP_GRID, STATCAT_Advanced);
+//DSPATHFINDINGSYSTEM_API DECLARE_LOG_CATEGORY_EXTERN(LogGridError, Error, All);
 
 /*
 * Node direction
@@ -39,10 +33,10 @@ enum class ENeighborDirection : uint8
 UENUM(BlueprintType)
 enum class EAStarResultState : uint8
 {
-	SearchFail,
-	SearchSuccess,
-	GoalUnreachable,
-	InfiniteLoop
+	SearchFail		UMETA(DisplayName = "Search Fail"),
+	SearchSuccess	UMETA(DisplayName = "Search Success"),
+	GoalUnreachable	UMETA(DisplayName = "Goal Unreachable"),
+	InfiniteLoop	UMETA(DisplayName = "Infinite Loop")
 };
 
 /*
@@ -65,25 +59,25 @@ struct DSPATHFINDINGSYSTEM_API FSearchResult
 
 	/* Stores all found nodes locations */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		TArray<FVector> PathResults;
+	TArray<FVector> PathResults;
 	/* Stores all found nodes indexes */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		TArray<int32> PathIndexes;
+	TArray<int32> PathIndexes;
 	/* Stores all found nodes index then Parents */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		TMap<int32, int32>	Parents;
+	TMap<int32, int32>	Parents;
 	/* Stores all found nodes index then Node Costs */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		TMap<int32, float> PathCosts;
+	TMap<int32, float> PathCosts;
 	/* Total path cost */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		float TotalNodeCost;
+	float TotalNodeCost;
 	/* Total path Length */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		int32 PathLength;
+	int32 PathLength;
 	/* Search state */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		EAStarResultState ResultState = EAStarResultState::SearchFail;
+	EAStarResultState ResultState = EAStarResultState::SearchFail;
 
 	FSearchResult()
 		: TotalNodeCost(NULL)
@@ -102,7 +96,7 @@ struct DSPATHFINDINGSYSTEM_API FAStarResult : public FSearchResult { GENERATED_U
 * To differentiate outputs.
 */
 USTRUCT(BlueprintType)
-struct DSPATHFINDINGSYSTEM_API FPSARResult  : public FSearchResult { GENERATED_USTRUCT_BODY() };
+struct DSPATHFINDINGSYSTEM_API FPSARResult : public FSearchResult { GENERATED_USTRUCT_BODY() };
 
 /*
 * Node neighbors
@@ -113,23 +107,24 @@ struct DSPATHFINDINGSYSTEM_API FNeighbors
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		int32 EAST;
+	int32 EAST;
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		int32 WEST;
+	int32 WEST;
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		int32 SOUTH;
+	int32 SOUTH;
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		int32 NORTH;
+	int32 NORTH;
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		int32 SOUTHEAST;
+	int32 SOUTHEAST;
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		int32 SOUTHWEST;
+	int32 SOUTHWEST;
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		int32 NORTHWEST;
+	int32 NORTHWEST;
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		int32 NORTHEAST;
+	int32 NORTHEAST;
 
-	bool Contains(int32 value) {
+	bool Contains(int32 value) const 
+	{
 		if (value == EAST)
 			return true;
 		if (value == WEST)
@@ -150,7 +145,8 @@ struct DSPATHFINDINGSYSTEM_API FNeighbors
 		return false;
 	};
 
-	TMap<int32, float>  GetAllNodes() {
+	TMap<int32, float>  GetAllNodes() const 
+	{
 		TMap<int32, float>  temp;
 		if (EAST != -1)
 			temp.Add(EAST, 1.0f);
@@ -197,22 +193,22 @@ struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 	* Ignore all obstacles
 	*/
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		uint32 bFly : 1;
+	uint32 bFly : 1;
 	/*AStar Function Only*/
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		uint32 bStopAtNeighborLocation : 1;
+	uint32 bStopAtNeighborLocation : 1;
 	/*SQUARE GRID ONLY*/
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		uint32 bDiagonal : 1;
+	uint32 bDiagonal : 1;
 	/* Node(Terrain) Cost Default 1.0f */
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		uint32 bOverrideNodeCostToOne : 1;
+	uint32 bOverrideNodeCostToOne : 1;
 	/*
 	* Prototype ONLY
 	* C++ and Blueprint communication is laggy
 	*/
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		uint32 bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY : 1;
+	uint32 bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY : 1;
 
 	FAStarPreferences()
 		: bDiagonal(true)
@@ -223,7 +219,7 @@ struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 * Node Behavior
 */
 USTRUCT(Blueprintable)
-struct DSPATHFINDINGSYSTEM_API FNodeResult
+struct DSPATHFINDINGSYSTEM_API FNodeProperty
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -231,47 +227,75 @@ struct DSPATHFINDINGSYSTEM_API FNodeResult
 	* Is node accessible or not
 	*/
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		uint32 bAccess : 1;
+	uint32 bAccess : 1;
 
 	/*
 	* Defines how much cost to get in to the node.
 	* Terrain Cost
 	*/
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-		float NodeCost = 1.0f;
+	float NodeCost = 1.0f;
+};
+
+/*
+* Node
+*/
+USTRUCT(Blueprintable)
+struct DSPATHFINDINGSYSTEM_API FGridNode
+{
+	GENERATED_USTRUCT_BODY()
+
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	bool bIsValid;
+
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	FVector Location;
+
+	//UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	//FBox Bound;
+
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	FNodeProperty NodeProperty;
+
+	FGridNode()
+		: Location(FVector::ZeroVector)
+		//, Bound(FBox())
+		, NodeProperty(FNodeProperty())
+		, bIsValid(true)
+	{}
+	FGridNode(FVector Loc, FNodeProperty Property = FNodeProperty())
+		: Location(Loc)
+		//, Bound(Bound)
+		, NodeProperty(Property)
+		, bIsValid(true)
+	{}
+	//FGridNode(FVector Loc, /*FBox Bound,*/ FNodeProperty Property)
+	//	: Location(Loc)
+		//, Bound(Bound)
+	//	, NodeProperty(Property)
+	//{}
 };
 
 UCLASS(Blueprintable)
 class DSPATHFINDINGSYSTEM_API AGrid : public AActor
 {
 	GENERATED_BODY()
-
 protected:
-
-	/*
-	* Get Node location from grid
-	*/
-	FORCEINLINE FVector FIGetCellLocation(int32 index)
-	{
-		FTransform Result;
-		hISM->GetInstanceTransform(index, Result, true);
-		return Result.GetLocation();
-	}
 
 	/*
 	* Heuristic Function
 	*/
-	FORCEINLINE float FIOctileDistance(FVector firstVector, FVector secondVector, float D = 1.0f)
+	FORCEINLINE float FIOctileDistance(FVector firstVector, FVector secondVector, float D = 1.0f) const
 	{
-		float dx = FMath::Abs(firstVector.X - secondVector.X);
-		float dy = FMath::Abs(firstVector.Y - secondVector.Y);
-		return D * (dx + dy) + (FMath::Sqrt(2) - 2 * D) * FMath::Min(dx, dy);
+		const float dx = FMath::Abs(firstVector.X - secondVector.X);
+		const float dy = FMath::Abs(firstVector.Y - secondVector.Y);
+		return D * (dx + dy) + (FMath::Sqrt(2.0f) - 2 * D) * FMath::Min(dx, dy);
 	}
 
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
-	
-public:	
+
+public:
 	// Sets default values for this actor's properties
 	AGrid();
 
@@ -289,7 +313,7 @@ public:
 	* The direction tells the neighbor index to go according to the Current Index.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Logic")
-		virtual FNodeResult NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::E_NOWHERE);
+	virtual FNodeProperty NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::E_NOWHERE);
 
 	/*
 	* Node cost and access logic
@@ -299,55 +323,29 @@ public:
 	* C++ and Blueprint communication is laggy
 	*/
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DsPathfindingSystem|Blueprint")
-		FNodeResult NodeBehaviorBlueprint(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::E_NOWHERE);
-	virtual FNodeResult NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::E_NOWHERE);
-
-	/* returns UHierarchicalInstancedStaticMeshComponent */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-		UHierarchicalInstancedStaticMeshComponent* getHISM();
-
-	/* GridX size */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0, ClampMax = 256), Category = "DsPathfindingSystem")
-		int32 GridX;
-	/* GridY size */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0, ClampMax = 256), Category = "DsPathfindingSystem")
-		int32 GridY;
-
-	/*
-	* Defines Hex or Square
-	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem")
-		EGridType gridType;
-
-	/*
-	* In editor you can't actually select UHierarchicalInstancedStaticMeshComponent
-	* when you try to select UHierarchicalInstancedStaticMeshComponent it's start to load all nodes(128*128) ~16k
-	* then editor start to freeze 
-	* because of that we need to some Dummy for collaision
-	*/
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadWrite, Category = "DsPathfindingSystem|Grid")
-		UBoxComponent* DummyComponentforCollision;
+	FNodeProperty NodeBehaviorBlueprint(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::E_NOWHERE);
+	virtual FNodeProperty NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::E_NOWHERE);
 
 	/*
 	* Main pathfinding function
-	* For accurate pathfinding (e.g follow road) you need to set NodeCostScale to big number 
+	* For accurate pathfinding (e.g follow road) you need to set NodeCostScale to big number
 	* if terrain cost is 1.0 this can be 1000
 	* if terrain cost is 100.0 this can be 10
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-		FAStarResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, float NodeCostScale = 1000.0f);
+	FAStarResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, float NodeCostScale = 1000.0f);
 
 	/*
 	* Finds all accessible nodes at range
 	* For accurate pathfinding (e.g follow road) you need to set default terrain cost value
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-		FPSARResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, float DefaultNodeCost = 1.0f);
+	FPSARResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, float DefaultNodeCost = 1.0f);
 	/*
 	* For PathSearchAtRange function reconstructing paths
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-		FPSARResult retracePath(int32 startIndex, int32 endIndex, FPSARResult StructData);
+	FPSARResult retracePath(int32 startIndex, int32 endIndex, FPSARResult StructData);
 
 	/*
 	* Return neighbor node indexes with given index value
@@ -363,99 +361,146 @@ public:
 	*	EAST and WEST SQUARE Grid Only
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar")
-		TMap<int32, float> GetNeighborIndexes(int32 index, FAStarPreferences Preferences);
+	TMap<int32, float> GetNeighborIndexes(int32 index, FAStarPreferences Preferences);
 
 	/*
 	* Return neighbor node indexes with given index value without checking is accessible
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar")
-		FNeighbors calculateNeighborIndexes(int32 index);
+	FNeighbors calculateNeighborIndexes(int32 index);
 
 	/*
 	* returns neighbor node direction according to CurrentIndex
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar")
-		ENeighborDirection GetNodeDirection(int32 CurrentIndex, int32 NextIndex);
-
-	/*
-	* Get Node location from grid
-	* UHierarchicalInstancedStaticMeshComponent::GetInstanceTransform()
-	*/
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-		FVector pureGetCellLocation(int32 index);
+	ENeighborDirection GetNodeDirection(int32 CurrentIndex, int32 NextIndex);
 
 	/*
 	* Get Node locations from grid using sphere selection
 	* UHierarchicalInstancedStaticMeshComponent::GetInstancesOverlappingSphere()
+	* BP pure
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-		TArray<int32> pureGetCellIndexWithSphere(FVector Center, float Radius);
+	TArray<int32> GetTileIndexWithSphere(FVector Center, float Radius);
 
 	/*
 	* Get Node locations from grid using box selection
 	* box auto generated
 	* UHierarchicalInstancedStaticMeshComponent::GetInstancesOverlappingBox()
+	* BP pure
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-		TArray<int32> pureGetCellIndexWithBox(FVector Center, float Radius);
+	TArray<int32> GetTileIndicesWithBox(FVector Center, FVector Extent);
 
+	/*
+	* Get Node location from grid
+	* UHierarchicalInstancedStaticMeshComponent::GetInstanceTransform()
+	* BP only (pure)
+	*/
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
+	FVector GetTileLocation(int32 index);
+
+	/* 
+	* BP only (pure)
+	*/
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
+	FGridNode GetTileByIndex(int32 index);
 	/*
 	* Finds node index with LineTraceMultiByObjectType()
 	* using UHierarchicalInstancedStaticMeshComponent::GetCollisionObjectType()
 	* collision same with DummyComponentforCollision
 	*/
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-		int32 getNodeIndex(FVector targetVector);
+	//UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
+	//	int32 getNodeIndex(FVector targetVector);
 
 	/*
 	* Returns given Actor Z value
 	* If there is no Actor in the given place. Its returns -BIG_NUMBER.
 	*/
+	//UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
+	//float getActorZ(AActor* Actor, FVector Location, ECollisionChannel TraceType);
+
+	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
+	void GenerateGrid(EGridType Type, int32 InGridX, int32 InGridY, TMap<int32, FNodeProperty> NodeProperties, bool bUseCustomTileBounds, FBox InCustomTileBounds, FVector2D InTileOffset = FVector2D::ZeroVector, FVector2D InTileScale = FVector2D(1.0f, 1.0f), bool bUseCustomGridLocation = false, FVector CustomGridLocation = FVector::ZeroVector);
+
+	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
+	void ClearInstances();
+
+	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
+	bool SetTileProperty(int32 index, FNodeProperty Property);
+	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
+	bool SetTilePropertyMap(TMap<int32, FNodeProperty> NodeProperties);
+
+private:
+	TArray<int32> GetInstancesOverlappingBox(const FBox& Box) const;
+	TArray<int32> GetInstancesOverlappingSphere(const FVector& Center, const float Radius) const;
+
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-		float getActorZ(AActor * Actor, FVector Location, ECollisionChannel TraceType);
+	int32 GetTileIndex(FVector Point) const;
+
+	void AddInstance(FVector Instance, FNodeProperty NodeProperty);
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
+	int32 GetInstanceCount() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
+	FBox GetTileBound() const;
+
+	FORCEINLINE FGridNode GetTile(int32 index) const
+	{
+		if (Instances.Num() == 0)
+		{
+			//UE_VLOG(GetOwner(), LogGridError, Log, TEXT("You are trying to access a tile on an empty grid."));
+			FGridNode InvalidNode;
+			InvalidNode.bIsValid = false;
+			InvalidNode.Location = FVector::ZeroVector;
+			InvalidNode.NodeProperty.bAccess = false;
+			InvalidNode.NodeProperty.NodeCost = 9999999;
+			return InvalidNode;
+		}
+		
+		if (index >= Instances.Num())
+			return Instances[Instances.Num() - 1];
+		else if (index < 0)
+			return Instances[0];
+		return Instances[index];
+	}
 
 protected:
 
 	/* UHierarchicalInstancedStaticMeshComponent is attached to scene*/
-	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem")
-		USceneComponent* scene;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem")
+	USceneComponent* scene;
 
 	/*
-	* Gird location 
-	* not confuse with scene or Actor lcoation
+	* Defines Hex or Square
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem")
-		FVector gridLoc;
-	/*
-	* Grid cell(Nodes) size
-	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem")
-		FVector cellScale;
-	/*
-	* Grid cell(Nodes) mesh
-	* e.g for square grid use square mesh for hexagon use hexagon mesh :)
-	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem")
-		UStaticMesh* GridMesh;
+	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem|Grid")
+	EGridType gridType;
 
-	/* Gap between nodes X axis*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem")
-		float GridOffsetX;
-	/* Gap between nodes Y axis*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem")
-		float GridOffsetY;
+	/* GridX size */
+	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem|Grid")
+	int32 GridX;
+	/* GridY size */
+	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem|Grid")
+	int32 GridY;
 	/* (GirdX * GridY) - 1 */
 	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem|Grid")
-		int32 TotalGridSize;
+	int32 TotalGridSize;
 
-	/*Grid main component*/
-	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Grid")
-		UHierarchicalInstancedStaticMeshComponent* hISM;
-
-	/* Hex grid or not */
+	/* Gap between nodes XY axis*/
 	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem|Grid")
-		bool bHex;
-	/* Grid visible or not */
-	UPROPERTY(EditAnywhere, Category = "DsPathfindingSystem")
-		bool bVisible;
+	FVector2D TileOffset;
+
+	/* */
+	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem|Grid")
+	FBox TileBound;
+
+	/*
+	* Grid Tile(Nodes) size
+	*/
+	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem")
+	FVector2D TileScale;
+
+	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem|Grid")
+	TMap<int32, FGridNode> Instances;
 };
