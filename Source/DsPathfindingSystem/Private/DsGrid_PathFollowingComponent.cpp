@@ -22,6 +22,8 @@
 #include "Navigation/MetaNavMeshPath.h"
 #include "AIConfig.h"
 
+#include "Misc/EngineVersionComparison.h"
+
 //#include "AI/Navigation/AbstractNavData.h"
 //#include "AI/Navigation/NavLinkCustomInterface.h"
 //#include "AI/Navigation/NavigationSystem.h"
@@ -373,6 +375,15 @@ void UDsGrid_PathFollowingComponent::SetMoveSegment(int32 SegmentStartIndex)
 
 		bWalkingNavLinkStart = FNavMeshNodeFlags(PathPt0.Flags).IsNavLink();
 
+#if UE_VERSION_NEWER_THAN(5, 4, 0)
+		// handle moving through custom nav links
+		if (PathPt0.CustomNavLinkId != FNavLinkId::Invalid)
+		{
+			UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+			INavLinkCustomInterface* CustomNavLink = NavSys->GetCustomLink(PathPt0.CustomNavLinkId);
+			StartUsingCustomLink(CustomNavLink, SegmentEnd);
+		}
+#else
 		// handle moving through custom nav links
 		if (PathPt0.CustomLinkId)
 		{
@@ -380,6 +391,7 @@ void UDsGrid_PathFollowingComponent::SetMoveSegment(int32 SegmentStartIndex)
 			INavLinkCustomInterface* CustomNavLink = NavSys->GetCustomLink(PathPt0.CustomLinkId);
 			StartUsingCustomLink(CustomNavLink, SegmentEnd);
 		}
+#endif
 
 		// update move focus in owning AI
 		UpdateMoveFocus();

@@ -1,7 +1,7 @@
 /*
 * DsPathfindingSystem
 * Plugin code
-* Copyright (c) 2023 Davut Coşkun
+* Copyright (c) 2023 Davut Co�kun
 * All Rights Reserved.
 */
 
@@ -18,303 +18,197 @@ DECLARE_CYCLE_STAT(TEXT("Grid~NodeBehavior"), STAT_AccessNode, STATGROUP_GRID);
 DECLARE_CYCLE_STAT(TEXT("Grid~NodeBehaviorBlueprint"), STAT_AccessNodeBlueprint, STATGROUP_GRID);
 DECLARE_CYCLE_STAT(TEXT("Grid~CalcNeighbor"), STAT_CalcNeighbor, STATGROUP_GRID);
 
+#define BoxBoundMin = FVector(-100.00000000000000, -100.00000000000000, -200.00001525878906);
+#define BoxBoundMax = FVector(100.00000000000000, 100.00003051757812, 0.0000000000000000);
+
+#define HexBoundMin = FVector( -86.602546691894531, -100.00000000000000, -46.808815002441406 );
+#define HexBoundMax = FVector( 86.602546691894531, 100.00000000000000, 1.5258789062500000e-05 );
+
 AGrid::AGrid()
+	: Super()
+	, gridType(EGridType::E_Square)
+	, GridX(0)
+	, GridY(0)
+	, TotalGridSize(0)
 {
-	gridLoc.X = -31500.0f;
-	gridLoc.Y = -25000.0f;
-	gridLoc.Z = 0.0f;
+	TileScale.X = 1.0f;
+	TileScale.Y = 1.0f;
 
-	cellScale.X = 2.0f;
-	cellScale.Y = 2.0f;
-	cellScale.Z = 1.0f;
+	GridX = 0.0f;
+	GridY = 0.0f;
 
-	GridX = 128.0f;
-	GridY = 128.0f;
+	TileOffset.X = 0.0f;
+	TileOffset.Y = 0.0f;
 
-	GridOffsetX = 0.0f;
-	GridOffsetY = 0.0f;
-
-	bVisible = false;
-
-	scene = CreateDefaultSubobject <USceneComponent>(TEXT("USceneComponent"));
+	scene = CreateDefaultSubobject<USceneComponent>(TEXT("USceneComponent"));
 	scene->SetMobility(EComponentMobility::Static);
 	RootComponent = scene;
-
-	DummyComponentforCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("Dummy Component for Collision"));
-	DummyComponentforCollision->SetupAttachment(scene, "Dummy Component for Collision");
-	DummyComponentforCollision->SetBoxExtent(FVector::ZeroVector, false);
-	DummyComponentforCollision->SetMobility(EComponentMobility::Static);
-	DummyComponentforCollision->BodyInstance.SetObjectType(ECC_WorldStatic);
-	DummyComponentforCollision->BodyInstance.SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	DummyComponentforCollision->BodyInstance.SetResponseToChannel(ECC_WorldStatic, ECR_Block);
-	DummyComponentforCollision->BodyInstance.SetResponseToChannel(ECC_WorldDynamic, ECR_Block);
-	DummyComponentforCollision->BodyInstance.SetResponseToChannel(ECC_Pawn, ECR_Block);
-	DummyComponentforCollision->BodyInstance.SetResponseToChannel(ECC_PhysicsBody, ECR_Block);
-	DummyComponentforCollision->BodyInstance.SetResponseToChannel(ECC_Visibility, ECR_Ignore);
 
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
 }
 
-void AGrid::OnConstruction(const FTransform & Transform)
+void AGrid::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
-
-	UnregisterAllComponents();
-
-	FTransform NodeTransform;
-	FVector NodeBoundMin;
-	FVector NodeBoundMax;
-	FVector NodeLocRef;
-
-	float boundY = 0.0f;
-	float boundX = 0.0f;
-	int32 totalGridSize = 0;
-
-	TotalGridSize = (GridX * GridY) - 1;
-
-	TArray<FVector> NodeLocationArray;
-	NodeLocationArray.Empty();
-	
-	UStaticMesh* Square = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), NULL, TEXT("StaticMesh'/DsPathfindingSystem/square.square'")));
-	UStaticMesh* Hex = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), NULL, TEXT("StaticMesh'/DsPathfindingSystem/Hex.Hex'")));
-
-	/*There is a bug if UHierarchicalInstancedStaticMeshComponent is created in constructor you can't use hISM->ClearInstances(); function
-	engine crashes immediately Error is array out of bound */
-	hISM = NewObject<UHierarchicalInstancedStaticMeshComponent>(this, TEXT("hISM"));
-
-	if (GridMesh != nullptr && (GridMesh != Square && GridMesh != Hex)) {
-		hISM->SetStaticMesh(GridMesh);
-	}
-	else {
-		GridMesh = nullptr;
-	}
-
-	if(!GridMesh) 
-	{
-		switch (gridType)
-		{
-		case EGridType::E_Square:
-		{
-			if (!Square) {
-				break;
-			}
-			GridMesh = Square;
-			hISM->SetStaticMesh(GridMesh);
-		}
-		break;
-		case EGridType::E_Hex:
-		{
-			if (!Hex) {
-				break;
-			}
-			GridMesh = Hex;
-			hISM->SetStaticMesh(GridMesh);
-		}
-		break;
-		default:
-			if (!GridMesh) {
-				return;
-			}
-			break;
-		}
-	}
-
-	if (!GridMesh) {
-		return;
-	}
-
-	hISM->CastShadow = false;
-	hISM->SetVisibility(bVisible, true);
-	hISM->SetupAttachment(scene, "hISM");
-	hISM->SetMobility(DummyComponentforCollision->Mobility);
-	hISM->BodyInstance.SetObjectType(DummyComponentforCollision->GetCollisionObjectType());
-	hISM->BodyInstance.SetCollisionEnabled(DummyComponentforCollision->GetCollisionEnabled());
-	hISM->BodyInstance.SetResponseToChannels(DummyComponentforCollision->GetCollisionResponseToChannels());
-
-	switch (gridType)
-	{
-	case EGridType::E_Square:
-
-		if (!hISM->GetStaticMesh()) {
-			return;
-		}
-
-		bHex = false;
-		if (hISM->GetInstanceCount() >= 1) {
-			hISM->ClearInstances();
-		}
-		hISM->GetLocalBounds(NodeBoundMin, NodeBoundMax);
-
-		boundX = NodeBoundMax.X - NodeBoundMin.X + GridOffsetX;
-		boundY = NodeBoundMax.Y - NodeBoundMin.Y - GridOffsetY;
-
-		totalGridSize = (GridX*GridY) - 1;
-
-		for (int32 ii = 0; ii <= totalGridSize; ++ii)
-		{
-			NodeLocRef.X = ((ii / GridY) * boundX);
-			NodeLocRef.Y = ((ii % GridY) * boundY);
-			NodeLocRef.Z = 0.0f;
-
-			NodeLocationArray.AddUnique(NodeLocRef*cellScale);
-		}
-
-		for (auto& loc : NodeLocationArray)
-		{
-			NodeTransform.SetLocation(gridLoc - (-loc));
-			NodeTransform.SetScale3D(cellScale);
-			hISM->AddInstanceWorldSpace(NodeTransform);
-		}
-		break;
-
-	case EGridType::E_Hex:
-
-		if (!hISM->GetStaticMesh()) {
-			return;
-		}
-		bHex = true;
-		if (hISM->GetInstanceCount() >= 1) {
-			hISM->ClearInstances();
-		}
-		hISM->GetLocalBounds(NodeBoundMin, NodeBoundMax);
-
-		boundX = NodeBoundMax.X - NodeBoundMin.X + GridOffsetX;
-		boundY = NodeBoundMax.Y - NodeBoundMin.Y - GridOffsetY;
-
-		totalGridSize = (GridX*GridY) - 1;
-
-		for (int32 ii = 0; ii <= totalGridSize; ++ii)
-		{
-			NodeLocRef.X = ((((ii / GridX) % 2) * (boundX / 2)) + ((ii % GridX) * boundX));
-			NodeLocRef.Y = ((ii / GridX)*(boundY * 0.75));
-			NodeLocRef.Z = 0.0f;
-
-			NodeLocationArray.AddUnique(NodeLocRef*cellScale);
-		}
-
-		for (auto& loc : NodeLocationArray)
-		{
-			NodeTransform.SetLocation(gridLoc - (-loc));
-			NodeTransform.SetScale3D(cellScale);
-			hISM->AddInstanceWorldSpace(NodeTransform);
-		}
-		break;
-
-	default:
-		break;
-	}
-
-	RegisterAllComponents();
 }
 
 // Called when the game starts or when spawned
 void AGrid::BeginPlay()
 {
 	Super::BeginPlay();
-	
 }
 
 // Called every frame
 void AGrid::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 }
 
-FVector AGrid::pureGetCellLocation(int32 index)
+void AGrid::GenerateGrid(EGridType Type, int32 InGridX, int32 InGridY, TMap<int32, FNodeProperty> NodeProperties, bool bUseCustomTileBounds, FBox InCustomTileBounds, FVector2D InTileOffset, FVector2D InTileScale, bool bUseCustomGridLocation, FVector CustomGridLocation)
 {
-	FTransform Result;
-	hISM->GetInstanceTransform(index, Result, true);
-	return Result.GetLocation();
+	ClearInstances();
+
+	if (InGridX == 0 || InGridY == 0)
+		return;
+
+	gridType = Type;
+	GridX = InGridX;
+	GridY = InGridY;
+	TileOffset = InTileOffset;
+	TileScale = InTileScale;
+	FVector gridLoc = bUseCustomGridLocation ? CustomGridLocation : GetActorLocation();
+
+	TileBound = bUseCustomTileBounds ? InCustomTileBounds : gridType == EGridType::E_Square ? FBox(FVector(-100.00000000000000, -100.00000000000000, -200.00001525878906), FVector(100.00000000000000, 100.00003051757812, 0.0000000000000000)) : FBox(FVector(-86.602546691894531, -100.00000000000000, -46.808815002441406), FVector(86.602546691894531, 100.00000000000000, 1.5258789062500000e-05));
+
+	TotalGridSize = (GridX * GridY) - 1;
+
+	float boundX = TileBound.Max.X - TileBound.Min.X + TileOffset.X;
+	float boundY = TileBound.Max.Y - TileBound.Min.Y - TileOffset.Y;
+
+	FVector NodeLocRef = FVector::ZeroVector;
+
+	for (int32 ii = 0; ii <= TotalGridSize; ++ii)
+	{
+		switch (gridType)
+		{
+		case EGridType::E_Square:
+		{
+			NodeLocRef.X = ((ii / GridY) * boundX);
+			NodeLocRef.Y = ((ii % GridY) * boundY);
+			NodeLocRef.Z = 0.0f;
+		}
+		break;
+		case EGridType::E_Hex:
+		{
+			NodeLocRef.X = ((((ii / GridX) % 2) * (boundX / 2)) + ((ii % GridX) * boundX));
+			NodeLocRef.Y = ((ii / GridX) * (boundY * 0.75));
+			NodeLocRef.Z = 0.0f;
+		}
+		break;
+		}
+
+		//NodeLocationArray.AddUnique(NodeLocRef * FVector(TileScale, 1.0f));
+		if (NodeProperties.Contains(ii))
+			AddInstance(gridLoc + ((NodeLocRef * FVector(TileScale, 1.0f))), NodeProperties[ii]);
+		else
+			AddInstance(gridLoc + ((NodeLocRef * FVector(TileScale, 1.0f))), FNodeProperty());
+	}
 }
 
-TArray<int32> AGrid::pureGetCellIndexWithSphere(FVector Center, float Radius)
+TArray<int32> AGrid::GetTileIndexWithSphere(FVector Center, float Radius)
 {
-	return hISM->GetInstancesOverlappingSphere(Center, Radius, true);
+	return GetInstancesOverlappingSphere(Center, Radius);
 }
 
-TArray<int32> AGrid::pureGetCellIndexWithBox(FVector Center, float Radius)
+TArray<int32> AGrid::GetTileIndicesWithBox(FVector Center, FVector Extent)
 {
 	FBox Box;
-	FVector boxExtend/* = hISM->Bounds.BoxExtent * (Radius / 10)*/;
-	boxExtend.X = hISM->Bounds.BoxExtent.X * (Radius / 10);
-	boxExtend.Y = hISM->Bounds.BoxExtent.Y * (Radius / 10);
-	boxExtend.Z = hISM->Bounds.BoxExtent.Z + hISM->Bounds.Origin.Z;
-	Box.BuildAABB(Center, boxExtend);
-	//DrawDebugBox(GetWorld(), Center, boxExtend, FColor(255, 0, 0), false, 60.0f/*,(uint8)100, 50.0f*/);
-	return hISM->GetInstancesOverlappingBox(Box, true);
+	Box.BuildAABB(Center, Extent);
+	return GetInstancesOverlappingBox(Box);
 }
 
-int32 AGrid::getNodeIndex(FVector targetVector)
+FVector AGrid::GetTileLocation(int32 index)
 {
-	SCOPE_CYCLE_COUNTER(STAT_GetNodeIndex);
-
-	UWorld* World	= GetWorld();
-	int32 out		= NULL;
-	float origin	= hISM->Bounds.Origin.Z;
-	float boxExtend = hISM->Bounds.BoxExtent.Z;
-
-	FVector sVector{ targetVector.X, targetVector.Y, ((boxExtend * 2) * -1.0f) + (origin + boxExtend) };
-	FVector eVector{ targetVector.X, targetVector.Y, origin + boxExtend };
-
-	TArray<FHitResult> traceHitResults;
-	FCollisionQueryParams traceParams;
-	traceParams.bTraceComplex = true;
-
-	World->LineTraceMultiByObjectType(traceHitResults, sVector, eVector, hISM->GetCollisionObjectType(), traceParams);
-
-	for (size_t i = 0; i < traceHitResults.Num(); i++)
-	{
-		if (traceHitResults[i].GetActor() != NULL) {
-			if (traceHitResults[i].GetActor() == this) {
-				if (traceHitResults[i].Item >= 0) {
-					out = traceHitResults[i].Item;
-					break;
-				}
-				else {
-					out = traceHitResults[i].Item + FMath::Abs(32767.0f) + 32769.0f;
-					break;
-				}
-			}
-		}
-	}
-	if (out <= ((GridX * GridY) - 1) && out >= 0)
-	{
-		return out;
-	}
-	else {
-		return -1;
-	}
+	return GetTile(index).Location;
 }
 
-float AGrid::getActorZ(AActor * Actor, FVector Location, ECollisionChannel TraceType)
+FGridNode AGrid::GetTileByIndex(int32 index)
 {
-	float Z = -BIG_NUMBER;
-	if (UWorld* world = GetWorld()) {
-		TArray<FHitResult> traceHitResults;
-		if (Actor) {
-			FVector origin;
-			FVector boxExtend;
-			Actor->GetActorBounds(false, origin, boxExtend);
-			FVector sVector{ Location.X,Location.Y, boxExtend.Z * 2 + Actor->GetActorLocation().Z };
-			FVector eVector{ Location.X,Location.Y, Actor->GetActorLocation().Z - 1 };
-			FCollisionQueryParams traceParams;
-			traceParams.bTraceComplex = true;
-			world->LineTraceMultiByObjectType(traceHitResults, sVector, eVector, UEngineTypes::ConvertToObjectType(TraceType), traceParams);
-			for (size_t i = 0; i < traceHitResults.Num(); i++)
-			{
-				if (traceHitResults[i].GetActor() == Actor) {
-					if (traceHitResults[i].Location.Z > Z) {
-						Z = traceHitResults[i].Location.Z;
-					}
-				}
-			}
-		}
-		return Z < 1 && Z > -1 ? 0 : Z;
-	}
-	return -BIG_NUMBER;
+	return GetTile(index);
 }
+
+//int32 AGrid::getNodeIndex(FVector targetVector)
+//{
+//	SCOPE_CYCLE_COUNTER(STAT_GetNodeIndex);
+//
+//	/*UWorld* World	= GetWorld();
+//	int32 out		= NULL;
+//	float origin	= hISM->Bounds.Origin.Z;
+//	float boxExtend = hISM->Bounds.BoxExtent.Z;
+//
+//	FVector sVector{ targetVector.X, targetVector.Y, ((boxExtend * 2) * -1.0f) + (origin + boxExtend) };
+//	FVector eVector{ targetVector.X, targetVector.Y, origin + boxExtend };
+//
+//	TArray<FHitResult> traceHitResults;
+//	FCollisionQueryParams traceParams;
+//	traceParams.bTraceComplex = true;
+//
+//	World->LineTraceMultiByObjectType(traceHitResults, sVector, eVector, hISM->GetCollisionObjectType(), traceParams);
+//
+//	for (size_t i = 0; i < traceHitResults.Num(); i++)
+//	{
+//		if (traceHitResults[i].GetActor() != NULL) {
+//			if (traceHitResults[i].GetActor() == this) {
+//				if (traceHitResults[i].Item >= 0) {
+//					out = traceHitResults[i].Item;
+//					break;
+//				}
+//				else {
+//					out = traceHitResults[i].Item + FMath::Abs(32767.0f) + 32769.0f;
+//					break;
+//				}
+//			}
+//		}
+//	}
+//	if (out <= ((GridX * GridY) - 1) && out >= 0)
+//	{
+//		return out;
+//	}
+//	else {
+//		return -1;
+//	}*/
+//
+//	return -1;
+//}
+
+//float AGrid::getActorZ(AActor* Actor, FVector Location, ECollisionChannel TraceType)
+//{
+//	float Z = -BIG_NUMBER;
+//	if (UWorld* world = GetWorld()) {
+//		TArray<FHitResult> traceHitResults;
+//		if (Actor) {
+//			FVector origin;
+//			FVector boxExtend;
+//			Actor->GetActorBounds(false, origin, boxExtend);
+//			FVector sVector{ Location.X,Location.Y, boxExtend.Z * 2 + Actor->GetActorLocation().Z };
+//			FVector eVector{ Location.X,Location.Y, Actor->GetActorLocation().Z - 1 };
+//			FCollisionQueryParams traceParams;
+//			traceParams.bTraceComplex = true;
+//			world->LineTraceMultiByObjectType(traceHitResults, sVector, eVector, UEngineTypes::ConvertToObjectType(TraceType), traceParams);
+//			for (size_t i = 0; i < traceHitResults.Num(); i++)
+//			{
+//				if (traceHitResults[i].GetActor() == Actor) {
+//					if (traceHitResults[i].Location.Z > Z) {
+//						Z = traceHitResults[i].Location.Z;
+//					}
+//				}
+//			}
+//		}
+//		return Z < 1 && Z > -1 ? 0 : Z;
+//	}
+//	return -BIG_NUMBER;
+//}
 
 FAStarResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, float NodeCostScale)
 {
@@ -342,41 +236,41 @@ FAStarResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferen
 	};
 
 	// Not to confuse with retracePath Function
-	auto Retrace = [&](const int32 start, const int32 end, const TMap<int32, FANode> &StructData) -> FAStarResult
-	{
-		int32 current = end;
-		FAStarResult Result;
-
-		while (current != start)
+	auto Retrace = [&](const int32 start, const int32 end, const TMap<int32, FANode>& StructData) -> FAStarResult
 		{
-			if (current <= -1) {
-				Result.ResultState = EAStarResultState::SearchFail;
-				return Result;
-			}
+			int32 current = end;
+			FAStarResult Result;
 
-			FVector currentVector = FIGetCellLocation(current);
-			Result.PathResults.Insert(currentVector, 0);
-			Result.PathIndexes.Insert(current, 0);
-			Result.PathLength = Result.PathLength + 1;
-			if (StructData.Find(current)) {
-				float currentCost = StructData[current].NodeCost;
-				Result.TotalNodeCost += currentCost;
-				Result.PathCosts.Add(current, currentCost);
-				Result.Parents.Add(current, StructData[current].parent);
-				current = StructData[current].parent;
-			}
-			else {
-				Result.ResultState = EAStarResultState::SearchFail;
-				return Result;
-			}
-		}
-		Result.ResultState = EAStarResultState::SearchSuccess;
+			while (current != start)
+			{
+				if (current <= -1) {
+					Result.ResultState = EAStarResultState::SearchFail;
+					return Result;
+				}
 
-		return Result;
-	};
+				FVector currentVector = Instances[current].Location;
+				Result.PathResults.Insert(currentVector, 0);
+				Result.PathIndexes.Insert(current, 0);
+				Result.PathLength = Result.PathLength + 1;
+				if (StructData.Find(current)) {
+					float currentCost = StructData[current].NodeCost;
+					Result.TotalNodeCost += currentCost;
+					Result.PathCosts.Add(current, currentCost);
+					Result.Parents.Add(current, StructData[current].parent);
+					current = StructData[current].parent;
+				}
+				else {
+					Result.ResultState = EAStarResultState::SearchFail;
+					return Result;
+				}
+			}
+			Result.ResultState = EAStarResultState::SearchSuccess;
+
+			return Result;
+		};
 
 	FAStarResult			AStarResult;
-	FCriticalSection		mutex;
+	//FCriticalSection		mutex;
 	TMap<int32, FANode>		GridGraph;
 	FNeighbors				stopAtNeighbor;
 
@@ -424,27 +318,27 @@ FAStarResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferen
 		auto& CurrentNode = GridGraph.FindOrAdd(CurrentIndex);
 		CurrentNode.Closed = true;
 
-		mutex.Lock();
+		//mutex.Lock();
 		for (auto& Tile : GetNeighborIndexes(CurrentIndex, Preferences)) {
 
 			auto& NextNode = GridGraph.FindOrAdd(Tile.Key);
 
 			if (!NextNode.Closed)
 			{
-				float TraversalCost = (CurrentNode.TraversalCost + FIOctileDistance(FIGetCellLocation(CurrentIndex), FIGetCellLocation(Tile.Key))) + (Preferences.bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : (Tile.Value * NodeCostScale));
+				float TraversalCost = (CurrentNode.TraversalCost + FIOctileDistance(Instances[CurrentIndex].Location, Instances[Tile.Key].Location)) + (Preferences.bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : (Tile.Value * NodeCostScale));
 
 				auto PredicateIndex = [&](const FANode fCostH) {return fCostH.OpenSetIndex == Tile.Key; };
 
 				if (TraversalCost < NextNode.TraversalCost || !fCostHeap.ContainsByPredicate(PredicateIndex))
 				{
-					NextNode.NodeCost			= Preferences.bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value;
-					NextNode.TraversalCost		= TraversalCost;
-					NextNode.parent				= CurrentIndex;
-					NextNode.NodeCostCount		= CurrentNode.NodeCostCount + Preferences.bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value;
-					NextNode.parentCount		= CurrentNode.parentCount + 1;
-					NextNode.OpenSetIndex		= Tile.Key;
-					NextNode.HeuristicCost		= FIOctileDistance(FIGetCellLocation(Tile.Key), FIGetCellLocation(endIndex));	// NodePredicate
-					NextNode.TotalCost			= NextNode.TraversalCost + NextNode.HeuristicCost;	// NodePredicate
+					NextNode.NodeCost = Preferences.bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value;
+					NextNode.TraversalCost = TraversalCost;
+					NextNode.parent = CurrentIndex;
+					NextNode.NodeCostCount = CurrentNode.NodeCostCount + Preferences.bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value;
+					NextNode.parentCount = CurrentNode.parentCount + 1;
+					NextNode.OpenSetIndex = Tile.Key;
+					NextNode.HeuristicCost = FIOctileDistance(Instances[Tile.Key].Location, Instances[endIndex].Location);	// NodePredicate
+					NextNode.TotalCost = NextNode.TraversalCost + NextNode.HeuristicCost;	// NodePredicate
 
 					if (!fCostHeap.ContainsByPredicate(PredicateIndex))
 					{
@@ -453,7 +347,7 @@ FAStarResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferen
 				}
 			}
 		}
-		mutex.Unlock();
+		//mutex.Unlock();
 	}
 	return AStarResult;
 }
@@ -544,14 +438,15 @@ FPSARResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPref
 
 	if (openSet.Num() > 1) {
 		Result.ResultState = EAStarResultState::SearchSuccess;
-	} else {
+	}
+	else {
 		Result.ResultState = EAStarResultState::SearchFail;
 		return Result;
 	}
 
 	for (auto& inx : openSet) {
 		if (inx.Key != startIndex) {
-			Result.PathResults.Add(FIGetCellLocation(inx.Key));
+			Result.PathResults.Add(Instances[inx.Key].Location);
 			Result.Parents.Add(inx.Key, Node[inx.Key].parent);
 			Result.PathIndexes.Add(inx.Key);
 			Result.PathCosts.Add(inx.Key, inx.Value);
@@ -583,16 +478,16 @@ FPSARResult AGrid::retracePath(int32 startIndex, int32 endIndex, FPSARResult Str
 	{
 		if (debugCount > 7500) { AResult.ResultState = EAStarResultState::InfiniteLoop; return AResult; }
 
-		if(currentIndex <= -1) {
+		if (currentIndex <= -1) {
 			AResult.ResultState = EAStarResultState::SearchFail;
 			return AResult;
 		}
 
-		FVector currentVector = FIGetCellLocation(currentIndex);
+		FVector currentVector = Instances[currentIndex].Location;
 		AResult.PathResults.Insert(currentVector, 0);
 		AResult.PathIndexes.Insert(currentIndex, 0);
 		AResult.PathLength = AResult.PathLength + 1;
-		if(StructData.PathCosts.Find(currentIndex)) {
+		if (StructData.PathCosts.Find(currentIndex)) {
 			float currentCost = StructData.PathCosts[currentIndex];
 			AResult.TotalNodeCost += currentCost;
 			AResult.PathCosts.Add(currentIndex, currentCost);
@@ -611,11 +506,6 @@ FPSARResult AGrid::retracePath(int32 startIndex, int32 endIndex, FPSARResult Str
 	return AResult;
 }
 
-UHierarchicalInstancedStaticMeshComponent* AGrid::getHISM()
-{
-	return hISM;
-}
-
 FNeighbors AGrid::calculateNeighborIndexes(int32 index)
 {
 	SCOPE_CYCLE_COUNTER(STAT_CalcNeighbor);
@@ -627,10 +517,10 @@ FNeighbors AGrid::calculateNeighborIndexes(int32 index)
 	{
 	case EGridType::E_Square:
 
-		Neighbors.EAST		= GridY >= GridX ? (index + 1) % GridY == 0 ? -1 : index + 1 : (index + 1) % GridY == 0 ? -1 : index + 1;
-		Neighbors.WEST		= GridY >= GridX ? index % GridY == 0 ? -1 : index - 1 : index % GridY == 0 ? -1 : index - 1;
-		Neighbors.SOUTH		= GridY >= GridX ? index - GridY : index - GridY;
-		Neighbors.NORTH		= GridY >= GridX ? index + GridY : index + GridY;
+		Neighbors.EAST = GridY >= GridX ? (index + 1) % GridY == 0 ? -1 : index + 1 : (index + 1) % GridY == 0 ? -1 : index + 1;
+		Neighbors.WEST = GridY >= GridX ? index % GridY == 0 ? -1 : index - 1 : index % GridY == 0 ? -1 : index - 1;
+		Neighbors.SOUTH = GridY >= GridX ? index - GridY : index - GridY;
+		Neighbors.NORTH = GridY >= GridX ? index + GridY : index + GridY;
 		Neighbors.SOUTHEAST = GridY >= GridX ? (index + 1) % GridY == 0 ? -1 : (index - GridY) + 1 : (index + 1) % GridY == 0 ? -1 : (index - GridY) + 1;
 		Neighbors.SOUTHWEST = GridY >= GridX ? index % GridY == 0 ? -1 : (index - GridY) - 1 : index % GridY == 0 ? -1 : (index - GridY) - 1;
 		Neighbors.NORTHWEST = GridY >= GridX ? index % GridY == 0 ? -1 : (index + GridY) - 1 : index % GridY == 0 ? -1 : (index + GridY) - 1;
@@ -647,20 +537,20 @@ FNeighbors AGrid::calculateNeighborIndexes(int32 index)
 			Neighbors.NORTHWEST = (index - (GridX - 1)) % GridX == 0 ? -1 : (index - (GridX - 1));
 			Neighbors.SOUTHWEST = (index - GridX);
 			Neighbors.SOUTHEAST = (GridX + index);
-			Neighbors.NORTH		= (index + 1) % GridX == 0 ? -1 : (index + 1);
-			Neighbors.SOUTH		= index % GridX == 0 ? -1 : (index - 1);
-			Neighbors.EAST		= -1;
-			Neighbors.WEST		= -1;
+			Neighbors.NORTH = (index + 1) % GridX == 0 ? -1 : (index + 1);
+			Neighbors.SOUTH = index % GridX == 0 ? -1 : (index - 1);
+			Neighbors.EAST = -1;
+			Neighbors.WEST = -1;
 		}
 		else {
 			Neighbors.NORTHEAST = (GridX + index);
 			Neighbors.NORTHWEST = (index - GridX);
 			Neighbors.SOUTHWEST = /*(index - (GridX + 1))*/ index % GridX == 0 ? -1 : (index - (GridX + 1));
 			Neighbors.SOUTHEAST = /*((GridX - (+1)) + index)*/ index % GridX == 0 ? -1 : ((GridX - (+1)) + index);
-			Neighbors.NORTH		= (index + 1) % GridX == 0 ? -1 : (index + 1);
-			Neighbors.SOUTH		= /*(index - 1)*/ index % GridX == 0 ? -1 : (index - 1);
-			Neighbors.EAST		= -1;
-			Neighbors.WEST		= -1;
+			Neighbors.NORTH = (index + 1) % GridX == 0 ? -1 : (index + 1);
+			Neighbors.SOUTH = /*(index - 1)*/ index % GridX == 0 ? -1 : (index - 1);
+			Neighbors.EAST = -1;
+			Neighbors.WEST = -1;
 		}
 
 		break;
@@ -691,12 +581,12 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 		return Neighbors.GetAllNodes();
 
 	TBitArray<FDefaultBitArrayAllocator> DiagonalBranch;
-	DiagonalBranch.Init(bHex || !Preferences.bDiagonal ? true : false, 8);
+	DiagonalBranch.Init(gridType == EGridType::E_Hex || !Preferences.bDiagonal ? true : false, 8);
 
 	TMap<int32, float> result;
-	FNodeResult Access;
+	FNodeProperty Access;
 
-	if (Neighbors.EAST <= TotalGridSize && Neighbors.EAST >= 0 && !bHex) {
+	if (Neighbors.EAST <= TotalGridSize && Neighbors.EAST >= 0 && gridType == EGridType::E_Square) {
 		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.EAST, ENeighborDirection::E_EAST) : NodeBehavior(index, Neighbors.EAST, ENeighborDirection::E_EAST);
 		if (Access.bAccess)
 		{
@@ -704,7 +594,7 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 			result.Add(Neighbors.EAST, Access.NodeCost);
 		}
 	}
-	if (Neighbors.WEST <= TotalGridSize && Neighbors.WEST >= 0 && !bHex) {
+	if (Neighbors.WEST <= TotalGridSize && Neighbors.WEST >= 0 && gridType == EGridType::E_Square) {
 		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.WEST, ENeighborDirection::E_WEST) : NodeBehavior(index, Neighbors.WEST, ENeighborDirection::E_WEST);
 		if (Access.bAccess)
 		{
@@ -793,24 +683,153 @@ ENeighborDirection AGrid::GetNodeDirection(int32 CurrentIndex, int32 NextIndex)
 	return Direction;
 }
 
-FNodeResult AGrid::NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction)
+FNodeProperty AGrid::NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction)
 {
 	SCOPE_CYCLE_COUNTER(STAT_AccessNode);
 
-	FNodeResult result;
+	//FNodeProperty result;
+	//result.bAccess = true;
+	//result.NodeCost = 1.0f;
+
+	return Instances[NeighborIndex].NodeProperty;
+}
+
+FNodeProperty AGrid::NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction)
+{
+	SCOPE_CYCLE_COUNTER(STAT_AccessNodeBlueprint);
+
+	FNodeProperty result;
 	result.bAccess = true;
 	result.NodeCost = 1.0f;
 
 	return result;
 }
 
-FNodeResult AGrid::NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction)
+TArray<int32> AGrid::GetInstancesOverlappingBox(const FBox& Box) const
 {
-	SCOPE_CYCLE_COUNTER(STAT_AccessNodeBlueprint);
+	/*if (Instances.Num() == 0)
+	{
+		UE_VLOG(GetOwner(), LogGridError, Log, TEXT("You are trying to access a tile on an empty grid."));
+		return TArray<int32>();
+	}*/
 
-	FNodeResult result;
-	result.bAccess = true;
-	result.NodeCost = 1.0f;
+	FBox CellBound = GetTileBound();
+	CellBound.Min = TileBound.Min * FVector(TileScale, 1.0f);
+	CellBound.Max = TileBound.Max * FVector(TileScale, 1.0f);
+	TArray<int32> indices;
+	for (const auto& Instance : Instances)
+	{
+		CellBound = CellBound.MoveTo(Instance.Value.Location);
+		if (Box.Intersect(CellBound))
+		{
+			indices.Add(Instance.Key);
+		}
+	}
+	return indices;
+}
 
-	return result;
+TArray<int32> AGrid::GetInstancesOverlappingSphere(const FVector& Center, const float Radius) const
+{
+	/*if (Instances.Num() == 0)
+	{
+		UE_VLOG(GetOwner(), LogGridError, Log, TEXT("You are trying to access a tile on an empty grid."));
+		return TArray<int32>();
+	}*/
+
+	FBox CellBound = GetTileBound();
+	CellBound.Min = TileBound.Min * FVector(TileScale, 1.0f);
+	CellBound.Max = TileBound.Max * FVector(TileScale, 1.0f);
+	FSphere Sphere(Center, Radius);
+	TArray<int32> indices;
+	for (const auto& Instance : Instances)
+	{
+		CellBound = CellBound.MoveTo(Instance.Value.Location);
+		if (FMath::SphereAABBIntersection(Sphere, CellBound))
+		{
+			indices.Add(Instance.Key);
+		}
+	}
+	return indices;
+}
+
+int32 AGrid::GetTileIndex(FVector Point) const
+{
+	/*if (Instances.Num() == 0)
+	{
+		UE_VLOG(GetOwner(), LogGridError, Log, TEXT("You are trying to access a tile on an empty grid."));
+		return -1;
+	}*/
+
+	FBox CellBound = GetTileBound();
+	CellBound.Min = TileBound.Min * FVector(TileScale, 1.0f);
+	CellBound.Max = TileBound.Max * FVector(TileScale, 1.0f);
+	for (const auto& Instance : Instances)
+	{
+		CellBound = CellBound.MoveTo(Instance.Value.Location);
+		if (CellBound.IsInside(Point))
+		{
+			return Instance.Key;
+		}
+	}
+	return -1;
+}
+
+void AGrid::AddInstance(FVector Loc, FNodeProperty NodeProperty)
+{
+	Instances.Add(Instances.Num(), FGridNode(Loc, NodeProperty));
+}
+
+int32 AGrid::GetInstanceCount() const
+{
+	return Instances.Num();
+}
+
+void AGrid::ClearInstances()
+{
+	Instances.Empty();
+}
+
+bool AGrid::SetTileProperty(int32 index, FNodeProperty Property)
+{
+	if (!Instances.Contains(index))
+		return false;
+
+	Instances[index].NodeProperty = Property;
+	return true;
+}
+
+bool AGrid::SetTilePropertyMap(TMap<int32, FNodeProperty> NodeProperties)
+{
+	if (NodeProperties.Num() == 0)
+		return false;
+	for (const auto& Node : NodeProperties)
+	{
+		if (Instances.Contains(Node.Key))
+		{
+			Instances[Node.Key].NodeProperty = Node.Value;
+		}
+	}
+	return true;
+}
+
+FBox AGrid::GetTileBound() const
+{
+	return TileBound;
+
+	/*switch (gridType)
+	{
+	case EGridType::E_Square:
+	{
+		return FBox(FVector(-100.00000000000000, -100.00000000000000, -200.00001525878906) * FVector(TileScale, 1.0f), FVector(100.00000000000000, 100.00003051757812, 0.0000000000000000) * FVector(TileScale, 1.0f));
+	}
+	break;
+	case EGridType::E_Hex:
+	{
+		return FBox(FVector(-86.602546691894531, -100.00000000000000, -46.808815002441406) * FVector(TileScale, 1.0f), FVector(86.602546691894531, 100.00000000000000, 1.5258789062500000e-05) * FVector(TileScale, 1.0f));
+	}
+	break;
+	default:
+		break;
+	}
+	return FBox();*/
 }
