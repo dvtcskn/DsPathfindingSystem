@@ -8,7 +8,7 @@
 #include "Grid.generated.h"
 
 DECLARE_STATS_GROUP(TEXT("Grid"), STATGROUP_GRID, STATCAT_Advanced);
-//DSPATHFINDINGSYSTEM_API DECLARE_LOG_CATEGORY_EXTERN(LogGridError, Error, All);
+//THEPROJECTWARFARE_API DECLARE_LOG_CATEGORY_EXTERN(LogGridError, Error, All);
 
 /*
 * Node direction
@@ -53,7 +53,7 @@ enum class EGridType : uint8
 * Search Functions returns
 */
 USTRUCT(BlueprintType)
-struct DSPATHFINDINGSYSTEM_API FSearchResult
+struct THEPROJECTWARFARE_API FSearchResult
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -84,25 +84,18 @@ struct DSPATHFINDINGSYSTEM_API FSearchResult
 		, PathLength(NULL)
 		, ResultState(EAStarResultState::SearchFail)
 	{};
+	FSearchResult(EAStarResultState ResultState)
+		: TotalNodeCost(NULL)
+		, PathLength(NULL)
+		, ResultState(ResultState)
+	{};
 };
-/*
-* struct FAStarResult : public FSearchResult
-* To differentiate outputs.
-*/
-USTRUCT(BlueprintType)
-struct DSPATHFINDINGSYSTEM_API FAStarResult : public FSearchResult { GENERATED_USTRUCT_BODY() };
-/*
-* struct FPSARResult : public FSearchResult
-* To differentiate outputs.
-*/
-USTRUCT(BlueprintType)
-struct DSPATHFINDINGSYSTEM_API FPSARResult : public FSearchResult { GENERATED_USTRUCT_BODY() };
 
 /*
 * Node neighbors
 */
 USTRUCT(BlueprintType)
-struct DSPATHFINDINGSYSTEM_API FNeighbors
+struct THEPROJECTWARFARE_API FNeighbors
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -184,7 +177,7 @@ struct DSPATHFINDINGSYSTEM_API FNeighbors
 * Search Functions Property
 */
 USTRUCT(BlueprintType)
-struct DSPATHFINDINGSYSTEM_API FAStarPreferences
+struct THEPROJECTWARFARE_API FAStarPreferences
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -211,7 +204,11 @@ struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 	uint32 bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY : 1;
 
 	FAStarPreferences()
-		: bDiagonal(true)
+		: bFly(false)
+		, bStopAtNeighborLocation(false)
+		, bDiagonal(true)
+		, bOverrideNodeCostToOne(false)
+		, bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY(false)
 	{}
 };
 
@@ -219,7 +216,7 @@ struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 * Node Behavior
 */
 USTRUCT(Blueprintable)
-struct DSPATHFINDINGSYSTEM_API FNodeProperty
+struct THEPROJECTWARFARE_API FNodeProperty
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -235,13 +232,18 @@ struct DSPATHFINDINGSYSTEM_API FNodeProperty
 	*/
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	float NodeCost = 1.0f;
+
+	FNodeProperty()
+		: bAccess(true)
+		, NodeCost(1.0f)
+	{}
 };
 
 /*
 * Node
 */
 USTRUCT(Blueprintable)
-struct DSPATHFINDINGSYSTEM_API FGridNode
+struct THEPROJECTWARFARE_API FGridNode
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -258,16 +260,16 @@ struct DSPATHFINDINGSYSTEM_API FGridNode
 	FNodeProperty NodeProperty;
 
 	FGridNode()
-		: Location(FVector::ZeroVector)
+		: bIsValid(true)
+		, Location(FVector::ZeroVector)
 		//, Bound(FBox())
 		, NodeProperty(FNodeProperty())
-		, bIsValid(true)
 	{}
 	FGridNode(FVector Loc, FNodeProperty Property = FNodeProperty())
-		: Location(Loc)
+		: bIsValid(true)
+		, Location(Loc)
 		//, Bound(Bound)
 		, NodeProperty(Property)
-		, bIsValid(true)
 	{}
 	//FGridNode(FVector Loc, /*FBox Bound,*/ FNodeProperty Property)
 	//	: Location(Loc)
@@ -277,7 +279,7 @@ struct DSPATHFINDINGSYSTEM_API FGridNode
 };
 
 UCLASS(Blueprintable)
-class DSPATHFINDINGSYSTEM_API AGrid : public AActor
+class THEPROJECTWARFARE_API AGrid : public AActor
 {
 	GENERATED_BODY()
 protected:
@@ -333,19 +335,19 @@ public:
 	* if terrain cost is 100.0 this can be 10
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-	FAStarResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, float NodeCostScale = 1000.0f);
+	FSearchResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, float NodeCostScale = 1000.0f);
 
 	/*
 	* Finds all accessible nodes at range
 	* For accurate pathfinding (e.g follow road) you need to set default terrain cost value
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-	FPSARResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, float DefaultNodeCost = 1.0f);
+	FSearchResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, float DefaultNodeCost = 1.0f);
 	/*
 	* For PathSearchAtRange function reconstructing paths
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-	FPSARResult retracePath(int32 startIndex, int32 endIndex, FPSARResult StructData);
+	FSearchResult retracePath(int32 startIndex, int32 endIndex, FSearchResult StructData);
 
 	/*
 	* Return neighbor node indexes with given index value
@@ -457,7 +459,7 @@ private:
 			InvalidNode.NodeProperty.NodeCost = 9999999;
 			return InvalidNode;
 		}
-		
+
 		if (index >= Instances.Num())
 			return Instances[Instances.Num() - 1];
 		else if (index < 0)
@@ -483,9 +485,6 @@ protected:
 	/* GridY size */
 	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem|Grid")
 	int32 GridY;
-	/* (GirdX * GridY) - 1 */
-	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem|Grid")
-	int32 TotalGridSize;
 
 	/* Gap between nodes XY axis*/
 	UPROPERTY(BlueprintReadOnly, Category = "DsPathfindingSystem|Grid")
