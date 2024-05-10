@@ -1,7 +1,7 @@
 /*
 * DsPathfindingSystem
 * Plugin code
-* Copyright (c) 2023 Davut Coï¿½kun
+* Copyright (c) 2023 Davut Coþkun
 * All Rights Reserved.
 */
 
@@ -24,22 +24,16 @@ DECLARE_CYCLE_STAT(TEXT("Grid~CalcNeighbor"), STAT_CalcNeighbor, STATGROUP_GRID)
 #define HexBoundMin = FVector( -86.602546691894531, -100.00000000000000, -46.808815002441406 );
 #define HexBoundMax = FVector( 86.602546691894531, 100.00000000000000, 1.5258789062500000e-05 );
 
+#define TotalGridSize (GridX * GridY) - 1
+
 AGrid::AGrid()
 	: Super()
 	, gridType(EGridType::E_Square)
 	, GridX(0)
 	, GridY(0)
-	, TotalGridSize(0)
+	, TileOffset(FVector2D(0.0, 0.0))
+	, TileScale(FVector2D(1.0, 1.0))
 {
-	TileScale.X = 1.0f;
-	TileScale.Y = 1.0f;
-
-	GridX = 0.0f;
-	GridY = 0.0f;
-
-	TileOffset.X = 0.0f;
-	TileOffset.Y = 0.0f;
-
 	scene = CreateDefaultSubobject<USceneComponent>(TEXT("USceneComponent"));
 	scene->SetMobility(EComponentMobility::Static);
 	RootComponent = scene;
@@ -80,8 +74,6 @@ void AGrid::GenerateGrid(EGridType Type, int32 InGridX, int32 InGridY, TMap<int3
 	FVector gridLoc = bUseCustomGridLocation ? CustomGridLocation : GetActorLocation();
 
 	TileBound = bUseCustomTileBounds ? InCustomTileBounds : gridType == EGridType::E_Square ? FBox(FVector(-100.00000000000000, -100.00000000000000, -200.00001525878906), FVector(100.00000000000000, 100.00003051757812, 0.0000000000000000)) : FBox(FVector(-86.602546691894531, -100.00000000000000, -46.808815002441406), FVector(86.602546691894531, 100.00000000000000, 1.5258789062500000e-05));
-
-	TotalGridSize = (GridX * GridY) - 1;
 
 	float boundX = TileBound.Max.X - TileBound.Min.X + TileOffset.X;
 	float boundY = TileBound.Max.Y - TileBound.Min.Y - TileOffset.Y;
@@ -210,9 +202,12 @@ FGridNode AGrid::GetTileByIndex(int32 index)
 //	return -BIG_NUMBER;
 //}
 
-FAStarResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, float NodeCostScale)
+FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, float NodeCostScale)
 {
 	SCOPE_CYCLE_COUNTER(STAT_ASTARSEARCH);
+
+	if (startIndex == endIndex || (GridX * GridY) == 0)
+		return FSearchResult();
 
 	// No need to create this outside of the function. No one should use this.
 	struct FANode
@@ -236,10 +231,10 @@ FAStarResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferen
 	};
 
 	// Not to confuse with retracePath Function
-	auto Retrace = [&](const int32 start, const int32 end, const TMap<int32, FANode>& StructData) -> FAStarResult
+	auto Retrace = [&](const int32 start, const int32 end, const TMap<int32, FANode>& StructData) -> FSearchResult
 		{
 			int32 current = end;
-			FAStarResult Result;
+			FSearchResult Result;
 
 			while (current != start)
 			{
@@ -269,8 +264,7 @@ FAStarResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferen
 			return Result;
 		};
 
-	FAStarResult			AStarResult;
-	//FCriticalSection		mutex;
+	FSearchResult			AStarResult;
 	TMap<int32, FANode>		GridGraph;
 	FNeighbors				stopAtNeighbor;
 
@@ -299,8 +293,8 @@ FAStarResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferen
 	if (Preferences.bStopAtNeighborLocation)
 		stopAtNeighbor = calculateNeighborIndexes(endIndex);
 
-	while (fCostHeap.Num() != 0) {
-
+	while (fCostHeap.Num() != 0) 
+	{
 		int32 CurrentIndex = fCostHeap[0].OpenSetIndex;
 
 		if (Preferences.bStopAtNeighborLocation ? stopAtNeighbor.Contains(CurrentIndex) : CurrentIndex == endIndex)
@@ -318,9 +312,12 @@ FAStarResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferen
 		auto& CurrentNode = GridGraph.FindOrAdd(CurrentIndex);
 		CurrentNode.Closed = true;
 
-		//mutex.Lock();
-		for (auto& Tile : GetNeighborIndexes(CurrentIndex, Preferences)) {
+		TMap<int32, float> NeighborIndexes = GetNeighborIndexes(CurrentIndex, Preferences);
+		//if (NeighborIndexes.Num())
+		//	return FAStarResult();
 
+		for (const auto& Tile : NeighborIndexes)
+		{
 			auto& NextNode = GridGraph.FindOrAdd(Tile.Key);
 
 			if (!NextNode.Closed)
@@ -347,14 +344,16 @@ FAStarResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferen
 				}
 			}
 		}
-		//mutex.Unlock();
 	}
 	return AStarResult;
 }
 
-FPSARResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, float DefaultNodeCost)
+FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, float DefaultNodeCost)
 {
 	SCOPE_CYCLE_COUNTER(STAT_PathSearchAtRange);
+
+	if (atRange == 0 || (GridX * GridY) == 0)
+		return FSearchResult();
 
 	// No need to create this outside of the function. No one should use this.
 	struct FANode
@@ -377,9 +376,7 @@ FPSARResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPref
 		{}
 	};
 
-	FPSARResult Result;
-
-	//FCriticalSection mutex;
+	FSearchResult Result;
 
 	if (DefaultNodeCost < 1.0f)
 		DefaultNodeCost = 1.0f;
@@ -394,13 +391,45 @@ FPSARResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPref
 	bool loop = true;
 	bool pass = false;
 
-	while (loop) {
-		pass = false;
-		for (auto& inx : closedSet.Num() == 0 ? GetNeighborIndexes(startIndex, Preferences) : closedSet) {
+	//int32 failedAttemptCounter = 0;
 
-			for (auto& loc : closedSet.Num() == 0 ? GetNeighborIndexes(startIndex, Preferences) : GetNeighborIndexes(inx.Key, Preferences))
+	while (loop) 
+	{
+		pass = false;
+		TMap<int32, float> NeighborIndexes_Pass1;
+		if (closedSet.Num() == 0)
+		{
+			NeighborIndexes_Pass1 = GetNeighborIndexes(startIndex, Preferences);
+			if (NeighborIndexes_Pass1.Num() == 0)
+				break;
+		}
+		for (const auto& inx : closedSet.Num() == 0 ? NeighborIndexes_Pass1 : closedSet)
+		{
+			TMap<int32, float> NeighborIndexes_Pass2;
+			if (closedSet.Num() == 0)
 			{
-				if (loc.Key != startIndex) {
+				NeighborIndexes_Pass2 = GetNeighborIndexes(startIndex, Preferences);
+				if (NeighborIndexes_Pass2.Num() == 0)
+				{
+					loop = false;
+					break;
+				}
+			}
+			else
+			{
+				NeighborIndexes_Pass2 = GetNeighborIndexes(inx.Key, Preferences);
+				if (NeighborIndexes_Pass2.Num() == 0)
+				{
+					loop = false;
+					break;
+				}
+			}
+
+			for (const auto& loc : NeighborIndexes_Pass2)
+			{
+				if (loc.Key != startIndex) 
+				{
+					//failedAttemptCounter = 0;
 
 					auto& NodeFragment = Node.FindOrAdd(loc.Key);
 
@@ -411,8 +440,8 @@ FPSARResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPref
 
 					float tentativeCost = Node.FindOrAdd(inx.Key).NodeCostCount + NodeFragment.NodeCost;
 
-					if (tentativeCost < NodeFragment.NodeCostCount || !openSet.Contains(loc.Key)) {
-
+					if (tentativeCost < NodeFragment.NodeCostCount || !openSet.Contains(loc.Key))
+					{
 						NodeFragment.parent = closedSet.Num() == 0 ? startIndex : inx.Key;
 						NodeFragment.NodeCostCount = Preferences.bOverrideNodeCostToOne || Preferences.bFly ? Node.FindOrAdd(NodeFragment.parent).NodeCostCount + 1
 							: NodeCost + Node.FindOrAdd(NodeFragment.parent).NodeCostCount;
@@ -425,7 +454,8 @@ FPSARResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPref
 							FinalSet.FindOrAdd(loc.Key) = (loc.Key, NodeCost);
 						}
 					}
-					else if (!pass) {
+					else if (!pass) 
+					{
 						loop = false;
 					}
 				}
@@ -434,18 +464,26 @@ FPSARResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPref
 		closedSet.Empty();
 		closedSet = FinalSet;
 		FinalSet.Empty();
+
+		//failedAttemptCounter++;
+		//if (failedAttemptCounter >= (GridX * GridY))
+		//	return FSearchResult();
 	}
 
-	if (openSet.Num() > 1) {
+	if (openSet.Num() > 1) 
+	{
 		Result.ResultState = EAStarResultState::SearchSuccess;
 	}
-	else {
+	else 
+	{
 		Result.ResultState = EAStarResultState::SearchFail;
 		return Result;
 	}
 
-	for (auto& inx : openSet) {
-		if (inx.Key != startIndex) {
+	for (const auto& inx : openSet)
+	{
+		if (inx.Key != startIndex)
+		{
 			Result.PathResults.Add(Instances[inx.Key].Location);
 			Result.Parents.Add(inx.Key, Node[inx.Key].parent);
 			Result.PathIndexes.Add(inx.Key);
@@ -456,11 +494,11 @@ FPSARResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPref
 	return Result;
 }
 
-FPSARResult AGrid::retracePath(int32 startIndex, int32 endIndex, FPSARResult StructData)
+FSearchResult AGrid::retracePath(int32 startIndex, int32 endIndex, FSearchResult StructData)
 {
 	SCOPE_CYCLE_COUNTER(STAT_ReTracePath);
 
-	FPSARResult AResult;
+	FSearchResult AResult;
 
 	if (startIndex < 0 || endIndex < 0 || !StructData.PathIndexes.Contains(endIndex)) {
 		AResult.ResultState = EAStarResultState::SearchFail;
@@ -580,75 +618,111 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 	if (Preferences.bFly)
 		return Neighbors.GetAllNodes();
 
-	TBitArray<FDefaultBitArrayAllocator> DiagonalBranch;
-	DiagonalBranch.Init(gridType == EGridType::E_Hex || !Preferences.bDiagonal ? true : false, 8);
+	//TBitArray<FDefaultBitArrayAllocator> DiagonalBranch;
+	//DiagonalBranch.Init(gridType == EGridType::E_Hex || Preferences.bDiagonal ? true : false, 8);
 
 	TMap<int32, float> result;
 	FNodeProperty Access;
 
-	if (Neighbors.EAST <= TotalGridSize && Neighbors.EAST >= 0 && gridType == EGridType::E_Square) {
+	if (Neighbors.EAST <= TotalGridSize && Neighbors.EAST >= 0 && gridType == EGridType::E_Square) 
+	{
 		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.EAST, ENeighborDirection::E_EAST) : NodeBehavior(index, Neighbors.EAST, ENeighborDirection::E_EAST);
 		if (Access.bAccess)
 		{
-			DiagonalBranch[0] = true;
+			//DiagonalBranch[0] = true;
 			result.Add(Neighbors.EAST, Access.NodeCost);
 		}
 	}
-	if (Neighbors.WEST <= TotalGridSize && Neighbors.WEST >= 0 && gridType == EGridType::E_Square) {
+	if (Neighbors.WEST <= TotalGridSize && Neighbors.WEST >= 0 && gridType == EGridType::E_Square)
+	{
 		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.WEST, ENeighborDirection::E_WEST) : NodeBehavior(index, Neighbors.WEST, ENeighborDirection::E_WEST);
 		if (Access.bAccess)
 		{
-			DiagonalBranch[1] = true;
+			//DiagonalBranch[1] = true;
 			result.Add(Neighbors.WEST, Access.NodeCost);
 		}
 	}
-	if (Neighbors.SOUTH <= TotalGridSize && Neighbors.SOUTH >= 0) {
+	if (Neighbors.SOUTH <= TotalGridSize && Neighbors.SOUTH >= 0) 
+	{
 		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTH, ENeighborDirection::E_SOUTH) : NodeBehavior(index, Neighbors.SOUTH, ENeighborDirection::E_SOUTH);
 		if (Access.bAccess)
 		{
-			DiagonalBranch[2] = true;
+			//DiagonalBranch[2] = true;
 			result.Add(Neighbors.SOUTH, Access.NodeCost);
 		}
 	}
-	if (Neighbors.NORTH <= TotalGridSize && Neighbors.NORTH >= 0) {
+	if (Neighbors.NORTH <= TotalGridSize && Neighbors.NORTH >= 0) 
+	{
 		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTH, ENeighborDirection::E_NORTH) : NodeBehavior(index, Neighbors.NORTH, ENeighborDirection::E_NORTH);
 		if (Access.bAccess)
 		{
-			DiagonalBranch[3] = true;
+			//DiagonalBranch[3] = true;
 			result.Add(Neighbors.NORTH, Access.NodeCost);
 		}
 	}
-	if (Neighbors.SOUTHEAST <= TotalGridSize && Neighbors.SOUTHEAST >= 0) {
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHEAST, ENeighborDirection::E_SOUTH_EAST) : NodeBehavior(index, Neighbors.SOUTHEAST, ENeighborDirection::E_SOUTH_EAST);
-		if ((DiagonalBranch[0] && DiagonalBranch[2]) && Access.bAccess)
-		{
-			DiagonalBranch[4] = true;
-			result.Add(Neighbors.SOUTHEAST, Access.NodeCost);
-		}
-	}
 
-	if (Neighbors.SOUTHWEST <= TotalGridSize && Neighbors.SOUTHWEST >= 0) {
+	if (Neighbors.SOUTHEAST <= TotalGridSize && Neighbors.SOUTHEAST >= 0) 
+	{
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHEAST, ENeighborDirection::E_SOUTH_EAST) : NodeBehavior(index, Neighbors.SOUTHEAST, ENeighborDirection::E_SOUTH_EAST);
+		if (/*(DiagonalBranch[0] && DiagonalBranch[2]) &&*/ Access.bAccess)
+		{
+			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
+			{
+				//DiagonalBranch[4] = true;
+				result.Add(Neighbors.SOUTHEAST, Access.NodeCost);
+			}
+			else if (gridType == EGridType::E_Hex)
+			{
+				result.Add(Neighbors.SOUTHEAST, Access.NodeCost);
+			}
+		}
+	}
+	if (Neighbors.SOUTHWEST <= TotalGridSize && Neighbors.SOUTHWEST >= 0) 
+	{
 		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHWEST, ENeighborDirection::E_SOUTH_WEST) : NodeBehavior(index, Neighbors.SOUTHWEST, ENeighborDirection::E_SOUTH_WEST);
-		if ((DiagonalBranch[2] && DiagonalBranch[1]) && Access.bAccess)
+		if (/*(DiagonalBranch[2] && DiagonalBranch[1]) &&*/ Access.bAccess)
 		{
-			DiagonalBranch[5] = true;
-			result.Add(Neighbors.SOUTHWEST, Access.NodeCost);
+			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
+			{
+				//DiagonalBranch[5] = true;
+				result.Add(Neighbors.SOUTHWEST, Access.NodeCost);
+			}
+			else if (gridType == EGridType::E_Hex)
+			{
+				result.Add(Neighbors.SOUTHWEST, Access.NodeCost);
+			}
 		}
 	}
-	if (Neighbors.NORTHWEST <= TotalGridSize && Neighbors.NORTHWEST >= 0) {
+	if (Neighbors.NORTHWEST <= TotalGridSize && Neighbors.NORTHWEST >= 0) 
+	{
 		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTHWEST, ENeighborDirection::E_NORTH_WEST) : NodeBehavior(index, Neighbors.NORTHWEST, ENeighborDirection::E_NORTH_WEST);
-		if ((DiagonalBranch[1] && DiagonalBranch[3]) && Access.bAccess)
+		if (/*(DiagonalBranch[1] && DiagonalBranch[3]) &&*/ Access.bAccess)
 		{
-			DiagonalBranch[6] = true;
-			result.Add(Neighbors.NORTHWEST, Access.NodeCost);
+			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
+			{
+				//DiagonalBranch[6] = true;
+				result.Add(Neighbors.NORTHWEST, Access.NodeCost);
+			}
+			else if (gridType == EGridType::E_Hex)
+			{
+				result.Add(Neighbors.NORTHWEST, Access.NodeCost);
+			}
 		}
 	}
-	if (Neighbors.NORTHEAST <= TotalGridSize && Neighbors.NORTHEAST >= 0) {
+	if (Neighbors.NORTHEAST <= TotalGridSize && Neighbors.NORTHEAST >= 0) 
+	{
 		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTHEAST, ENeighborDirection::E_NORTH_EAST) : NodeBehavior(index, Neighbors.NORTHEAST, ENeighborDirection::E_NORTH_EAST);
-		if ((DiagonalBranch[3] && DiagonalBranch[0]) && Access.bAccess)
+		if (/*(DiagonalBranch[3] && DiagonalBranch[0]) &&*/ Access.bAccess)
 		{
-			DiagonalBranch[7] = true;
-			result.Add(Neighbors.NORTHEAST, Access.NodeCost);
+			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
+			{
+				//DiagonalBranch[7] = true;
+				result.Add(Neighbors.NORTHEAST, Access.NodeCost);
+			}
+			else if (gridType == EGridType::E_Hex)
+			{
+				result.Add(Neighbors.NORTHEAST, Access.NodeCost);
+			}
 		}
 	}
 
