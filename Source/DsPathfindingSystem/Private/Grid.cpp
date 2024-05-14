@@ -125,6 +125,58 @@ FVector AGrid::GetTileLocation(int32 index)
 	return GetTile(index).Location;
 }
 
+FBox AGrid::GetTileBox(int32 index)
+{
+	if (index < 0 || index > TotalGridSize)
+		return FBox();
+	return TileBound.MoveTo(GetTile(index).Location);
+}
+
+int32 AGrid::GetNeighborIndex(int32 index, ENeighborDirection Direction, FAStarPreferences Preferences)
+{
+	TMap<int32, float> Indices = GetNeighborIndexes(index, Preferences);
+	FNeighbors Neighbors = calculateNeighborIndexes(index);
+	switch (Direction)
+	{
+	case ENeighborDirection::None:
+		return -1;
+	case ENeighborDirection::NORTH:
+		if (Indices.Contains(Neighbors.NORTH))
+			return Neighbors.NORTH;
+		return -1;
+	case ENeighborDirection::NORTH_EAST:
+		if (Indices.Contains(Neighbors.NORTHEAST))
+			return Neighbors.NORTHEAST;
+		return -1;
+	case ENeighborDirection::EAST:
+		if (Indices.Contains(Neighbors.EAST))
+			return Neighbors.EAST;
+		return -1;
+	case ENeighborDirection::SOUTH_EAST:
+		if (Indices.Contains(Neighbors.SOUTHEAST))
+			return Neighbors.SOUTHEAST;
+		return -1;
+	case ENeighborDirection::SOUTH:
+		if (Indices.Contains(Neighbors.SOUTH))
+			return Neighbors.SOUTH;
+		return -1;
+	case ENeighborDirection::SOUTH_WEST:
+		if (Indices.Contains(Neighbors.SOUTHWEST))
+			return Neighbors.SOUTHWEST;
+		return -1;
+	case ENeighborDirection::WEST:
+		if (Indices.Contains(Neighbors.WEST))
+			return Neighbors.WEST;
+		return -1;
+	case ENeighborDirection::NORTH_WEST:
+		if (Indices.Contains(Neighbors.NORTHWEST))
+			return Neighbors.NORTHWEST;
+		return -1;
+	}
+
+	return -1;
+}
+
 FGridNode AGrid::GetTileByIndex(int32 index)
 {
 	return GetTile(index);
@@ -514,7 +566,7 @@ FSearchResult AGrid::retracePath(int32 startIndex, int32 endIndex, FSearchResult
 
 	while (currentIndex != startIndex)
 	{
-		if (debugCount > 7500) { AResult.ResultState = EAStarResultState::InfiniteLoop; return AResult; }
+		if (debugCount > TotalGridSize) { AResult.ResultState = EAStarResultState::InfiniteLoop; return AResult; }
 
 		if (currentIndex <= -1) {
 			AResult.ResultState = EAStarResultState::SearchFail;
@@ -547,6 +599,10 @@ FSearchResult AGrid::retracePath(int32 startIndex, int32 endIndex, FSearchResult
 FNeighbors AGrid::calculateNeighborIndexes(int32 index)
 {
 	SCOPE_CYCLE_COUNTER(STAT_CalcNeighbor);
+
+	/*
+	* To Do : Fix out of bound results
+	*/
 
 	FNeighbors Neighbors;
 	int32 hex;
@@ -597,6 +653,8 @@ FNeighbors AGrid::calculateNeighborIndexes(int32 index)
 		break;
 	}
 
+	/* Temp fix for out of bound results */
+	Neighbors.Filter(TotalGridSize);
 	return Neighbors;
 }
 
@@ -626,7 +684,7 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 
 	if (Neighbors.EAST <= TotalGridSize && Neighbors.EAST >= 0 && gridType == EGridType::E_Square) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.EAST, ENeighborDirection::E_EAST) : NodeBehavior(index, Neighbors.EAST, ENeighborDirection::E_EAST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.EAST, ENeighborDirection::EAST) : NodeBehavior(index, Neighbors.EAST, ENeighborDirection::EAST);
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[0] = true;
@@ -635,7 +693,7 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 	}
 	if (Neighbors.WEST <= TotalGridSize && Neighbors.WEST >= 0 && gridType == EGridType::E_Square)
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.WEST, ENeighborDirection::E_WEST) : NodeBehavior(index, Neighbors.WEST, ENeighborDirection::E_WEST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.WEST, ENeighborDirection::WEST) : NodeBehavior(index, Neighbors.WEST, ENeighborDirection::WEST);
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[1] = true;
@@ -644,7 +702,7 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 	}
 	if (Neighbors.SOUTH <= TotalGridSize && Neighbors.SOUTH >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTH, ENeighborDirection::E_SOUTH) : NodeBehavior(index, Neighbors.SOUTH, ENeighborDirection::E_SOUTH);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTH, ENeighborDirection::SOUTH) : NodeBehavior(index, Neighbors.SOUTH, ENeighborDirection::SOUTH);
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[2] = true;
@@ -653,7 +711,7 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 	}
 	if (Neighbors.NORTH <= TotalGridSize && Neighbors.NORTH >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTH, ENeighborDirection::E_NORTH) : NodeBehavior(index, Neighbors.NORTH, ENeighborDirection::E_NORTH);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTH, ENeighborDirection::NORTH) : NodeBehavior(index, Neighbors.NORTH, ENeighborDirection::NORTH);
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[3] = true;
@@ -663,7 +721,7 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 
 	if (Neighbors.SOUTHEAST <= TotalGridSize && Neighbors.SOUTHEAST >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHEAST, ENeighborDirection::E_SOUTH_EAST) : NodeBehavior(index, Neighbors.SOUTHEAST, ENeighborDirection::E_SOUTH_EAST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHEAST, ENeighborDirection::SOUTH_EAST) : NodeBehavior(index, Neighbors.SOUTHEAST, ENeighborDirection::SOUTH_EAST);
 		if (/*(DiagonalBranch[0] && DiagonalBranch[2]) &&*/ Access.bAccess)
 		{
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
@@ -679,7 +737,7 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 	}
 	if (Neighbors.SOUTHWEST <= TotalGridSize && Neighbors.SOUTHWEST >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHWEST, ENeighborDirection::E_SOUTH_WEST) : NodeBehavior(index, Neighbors.SOUTHWEST, ENeighborDirection::E_SOUTH_WEST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHWEST, ENeighborDirection::SOUTH_WEST) : NodeBehavior(index, Neighbors.SOUTHWEST, ENeighborDirection::SOUTH_WEST);
 		if (/*(DiagonalBranch[2] && DiagonalBranch[1]) &&*/ Access.bAccess)
 		{
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
@@ -695,7 +753,7 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 	}
 	if (Neighbors.NORTHWEST <= TotalGridSize && Neighbors.NORTHWEST >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTHWEST, ENeighborDirection::E_NORTH_WEST) : NodeBehavior(index, Neighbors.NORTHWEST, ENeighborDirection::E_NORTH_WEST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTHWEST, ENeighborDirection::NORTH_WEST) : NodeBehavior(index, Neighbors.NORTHWEST, ENeighborDirection::NORTH_WEST);
 		if (/*(DiagonalBranch[1] && DiagonalBranch[3]) &&*/ Access.bAccess)
 		{
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
@@ -711,7 +769,7 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 	}
 	if (Neighbors.NORTHEAST <= TotalGridSize && Neighbors.NORTHEAST >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTHEAST, ENeighborDirection::E_NORTH_EAST) : NodeBehavior(index, Neighbors.NORTHEAST, ENeighborDirection::E_NORTH_EAST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTHEAST, ENeighborDirection::NORTH_EAST) : NodeBehavior(index, Neighbors.NORTHEAST, ENeighborDirection::NORTH_EAST);
 		if (/*(DiagonalBranch[3] && DiagonalBranch[0]) &&*/ Access.bAccess)
 		{
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
@@ -733,26 +791,26 @@ ENeighborDirection AGrid::GetNodeDirection(int32 CurrentIndex, int32 NextIndex)
 {
 	SCOPE_CYCLE_COUNTER(STAT_GetNodeDirection);
 
-	ENeighborDirection Direction = ENeighborDirection::E_NOWHERE;
+	ENeighborDirection Direction = ENeighborDirection::None;
 
 	FNeighbors Neighbors = calculateNeighborIndexes(CurrentIndex);
 
 	if (Neighbors.EAST == NextIndex)
-		Direction = ENeighborDirection::E_EAST;
+		Direction = ENeighborDirection::EAST;
 	if (Neighbors.NORTH == NextIndex)
-		Direction = ENeighborDirection::E_NORTH;
+		Direction = ENeighborDirection::NORTH;
 	if (Neighbors.NORTHEAST == NextIndex)
-		Direction = ENeighborDirection::E_NORTH_EAST;
+		Direction = ENeighborDirection::NORTH_EAST;
 	if (Neighbors.NORTHWEST == NextIndex)
-		Direction = ENeighborDirection::E_NORTH_WEST;
+		Direction = ENeighborDirection::NORTH_WEST;
 	if (Neighbors.SOUTH == NextIndex)
-		Direction = ENeighborDirection::E_SOUTH;
+		Direction = ENeighborDirection::SOUTH;
 	if (Neighbors.SOUTHEAST == NextIndex)
-		Direction = ENeighborDirection::E_SOUTH_EAST;
+		Direction = ENeighborDirection::SOUTH_EAST;
 	if (Neighbors.SOUTHWEST == NextIndex)
-		Direction = ENeighborDirection::E_SOUTH_WEST;
+		Direction = ENeighborDirection::SOUTH_WEST;
 	if (Neighbors.WEST == NextIndex)
-		Direction = ENeighborDirection::E_WEST;
+		Direction = ENeighborDirection::WEST;
 
 	return Direction;
 }
@@ -853,7 +911,7 @@ void AGrid::AddInstance(FVector Loc, FNodeProperty NodeProperty)
 	Instances.Add(Instances.Num(), FGridNode(Loc, NodeProperty));
 }
 
-int32 AGrid::GetInstanceCount() const
+int32 AGrid::GetGridSize() const
 {
 	return Instances.Num();
 }
