@@ -16,15 +16,15 @@ DECLARE_STATS_GROUP(TEXT("Grid"), STATGROUP_GRID, STATCAT_Advanced);
 UENUM(BlueprintType)
 enum class ENeighborDirection : uint8
 {
-	E_NOWHERE		UMETA(DisplayName = "NOWHERE"),
-	E_NORTH			UMETA(DisplayName = "NORTH"),
-	E_NORTH_EAST	UMETA(DisplayName = "NORTH_EAST"),
-	E_EAST			UMETA(DisplayName = "EAST"),
-	E_SOUTH_EAST	UMETA(DisplayName = "SOUTH_EAST"),
-	E_SOUTH			UMETA(DisplayName = "SOUTH"),
-	E_SOUTH_WEST	UMETA(DisplayName = "SOUTH_WEST"),
-	E_WEST			UMETA(DisplayName = "WEST"),
-	E_NORTH_WEST	UMETA(DisplayName = "NORTH_WEST"),
+	None			UMETA(DisplayName = "NOWHERE"),
+	NORTH			UMETA(DisplayName = "NORTH"),
+	NORTH_EAST		UMETA(DisplayName = "NORTH_EAST"),
+	EAST			UMETA(DisplayName = "EAST"),
+	SOUTH_EAST		UMETA(DisplayName = "SOUTH_EAST"),
+	SOUTH			UMETA(DisplayName = "SOUTH"),
+	SOUTH_WEST		UMETA(DisplayName = "SOUTH_WEST"),
+	WEST			UMETA(DisplayName = "WEST"),
+	NORTH_WEST		UMETA(DisplayName = "NORTH_WEST"),
 };
 
 /*
@@ -116,7 +116,7 @@ struct THEPROJECTWARFARE_API FNeighbors
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	int32 NORTHEAST;
 
-	bool Contains(int32 value) const 
+	inline bool Contains(int32 value) const
 	{
 		if (value == EAST)
 			return true;
@@ -138,7 +138,7 @@ struct THEPROJECTWARFARE_API FNeighbors
 		return false;
 	};
 
-	TMap<int32, float>  GetAllNodes() const 
+	inline TMap<int32, float>  GetAllNodes() const
 	{
 		TMap<int32, float>  temp;
 		if (EAST != -1)
@@ -159,6 +159,26 @@ struct THEPROJECTWARFARE_API FNeighbors
 			temp.Add(NORTHEAST, 1.0f);
 
 		return temp;
+	}
+
+	inline void Filter(int32 GridSize)
+	{
+		if (EAST > GridSize || EAST < 0)
+			EAST = -1;
+		if (WEST > GridSize || WEST < 0)
+			WEST = -1;
+		if (SOUTH > GridSize || SOUTH < 0)
+			SOUTH = -1;
+		if (NORTH > GridSize || NORTH < 0)
+			NORTH = -1;
+		if (SOUTHEAST > GridSize || SOUTHEAST < 0)
+			SOUTHEAST = -1;
+		if (NORTHWEST > GridSize || NORTHWEST < 0)
+			NORTHWEST = -1;
+		if (SOUTHWEST > GridSize || SOUTHWEST < 0)
+			SOUTHWEST = -1;
+		if (NORTHEAST > GridSize || NORTHEAST < 0)
+			NORTHEAST = -1;
 	}
 
 	FNeighbors()
@@ -315,7 +335,7 @@ public:
 	* The direction tells the neighbor index to go according to the Current Index.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Logic")
-	virtual FNodeProperty NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::E_NOWHERE);
+	virtual FNodeProperty NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::None);
 
 	/*
 	* Node cost and access logic
@@ -325,8 +345,8 @@ public:
 	* C++ and Blueprint communication is laggy
 	*/
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DsPathfindingSystem|Blueprint")
-	FNodeProperty NodeBehaviorBlueprint(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::E_NOWHERE);
-	virtual FNodeProperty NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::E_NOWHERE);
+	FNodeProperty NodeBehaviorBlueprint(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::None);
+	virtual FNodeProperty NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::None);
 
 	/*
 	* Main pathfinding function
@@ -402,6 +422,12 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
 	FVector GetTileLocation(int32 index);
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
+	FBox GetTileBox(int32 index);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
+	int32 GetNeighborIndex(int32 index, ENeighborDirection Direction, FAStarPreferences Preferences = FAStarPreferences());
+
 	/* 
 	* BP only (pure)
 	*/
@@ -442,7 +468,7 @@ private:
 
 	void AddInstance(FVector Instance, FNodeProperty NodeProperty);
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-	int32 GetInstanceCount() const;
+	int32 GetGridSize() const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
 	FBox GetTileBound() const;
