@@ -1,7 +1,7 @@
 /*
 * DsPathfindingSystem
 * Plugin code
-* Copyright (c) 2023 Davut Coþkun
+* Copyright (c) 2024 Davut Coï¿½kun
 * All Rights Reserved.
 */
 
@@ -593,6 +593,17 @@ FSearchResult AGrid::retracePath(int32 startIndex, int32 endIndex, FSearchResult
 		debugCount++;
 	}
 	AResult.ResultState = EAStarResultState::SearchSuccess;
+
+	/*if (GetTile(endIndex).Actor)
+	{
+		AResult.PathResults.RemoveAt(AResult.PathResults.Num() - 1);
+		AResult.PathIndexes.RemoveAt(AResult.PathResults.Num() - 1);
+		AResult.PathLength--;
+		AResult.TotalNodeCost -= GetTile(endIndex).NodeProperty.NodeCost;
+		AResult.PathCosts.Remove(endIndex);
+		AResult.Parents.Remove(endIndex);
+	}*/
+
 	return AResult;
 }
 
@@ -674,7 +685,22 @@ TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pref
 
 	FNeighbors Neighbors = calculateNeighborIndexes(index);
 	if (Preferences.bFly)
+	{
+		if (gridType == EGridType::E_Square && !Preferences.bDiagonal)
+		{
+			TMap<int32, float> result;
+			if (Neighbors.EAST != -1)
+				result.Add(Neighbors.EAST, 1.0);
+			if (Neighbors.WEST != -1)
+				result.Add(Neighbors.WEST, 1.0);
+			if (Neighbors.SOUTH != -1)
+				result.Add(Neighbors.SOUTH, 1.0);
+			if (Neighbors.NORTH != -1)
+				result.Add(Neighbors.NORTH, 1.0);
+			return result;
+		}
 		return Neighbors.GetAllNodes();
+	}
 
 	//TBitArray<FDefaultBitArrayAllocator> DiagonalBranch;
 	//DiagonalBranch.Init(gridType == EGridType::E_Hex || Preferences.bDiagonal ? true : false, 8);
@@ -942,6 +968,24 @@ bool AGrid::SetTilePropertyMap(TMap<int32, FNodeProperty> NodeProperties)
 		}
 	}
 	return true;
+}
+
+void AGrid::RegisterActorToTile(int32 index, AActor* Actor, bool bAccess)
+{
+	if (index < 0 || index > TotalGridSize || !Actor)
+		return;
+
+	Instances[index].NodeProperty.bAccess = bAccess;
+	Instances[index].Actor = Actor;
+}
+
+void AGrid::UnregisterActorFromTile(int32 index, bool bAccess)
+{
+	if (index < 0 || index > TotalGridSize)
+		return;
+
+	Instances[index].NodeProperty.bAccess = bAccess;
+	Instances[index].Actor = nullptr;
 }
 
 FBox AGrid::GetTileBound() const
