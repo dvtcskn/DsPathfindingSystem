@@ -1,4 +1,9 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+/*
+* DsPathfindingSystem
+* Plugin code
+* Copyright (c) 2024 Davut Co�kun
+* All Rights Reserved.
+*/
 
 #pragma once
 
@@ -8,7 +13,7 @@
 #include "Grid.generated.h"
 
 DECLARE_STATS_GROUP(TEXT("Grid"), STATGROUP_GRID, STATCAT_Advanced);
-//THEPROJECTWARFARE_API DECLARE_LOG_CATEGORY_EXTERN(LogGridError, Error, All);
+//DSPATHFINDINGSYSTEM_API DECLARE_LOG_CATEGORY_EXTERN(LogGridError, Error, All);
 
 /*
 * Node direction
@@ -53,7 +58,7 @@ enum class EGridType : uint8
 * Search Functions returns
 */
 USTRUCT(BlueprintType)
-struct THEPROJECTWARFARE_API FSearchResult
+struct DSPATHFINDINGSYSTEM_API FSearchResult
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -95,7 +100,7 @@ struct THEPROJECTWARFARE_API FSearchResult
 * Node neighbors
 */
 USTRUCT(BlueprintType)
-struct THEPROJECTWARFARE_API FNeighbors
+struct DSPATHFINDINGSYSTEM_API FNeighbors
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -197,7 +202,7 @@ struct THEPROJECTWARFARE_API FNeighbors
 * Search Functions Property
 */
 USTRUCT(BlueprintType)
-struct THEPROJECTWARFARE_API FAStarPreferences
+struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -236,7 +241,7 @@ struct THEPROJECTWARFARE_API FAStarPreferences
 * Node Behavior
 */
 USTRUCT(Blueprintable)
-struct THEPROJECTWARFARE_API FNodeProperty
+struct DSPATHFINDINGSYSTEM_API FNodeProperty
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -263,7 +268,7 @@ struct THEPROJECTWARFARE_API FNodeProperty
 * Node
 */
 USTRUCT(Blueprintable)
-struct THEPROJECTWARFARE_API FGridNode
+struct DSPATHFINDINGSYSTEM_API FGridNode
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -279,17 +284,22 @@ struct THEPROJECTWARFARE_API FGridNode
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	FNodeProperty NodeProperty;
 
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	AActor* Actor;
+
 	FGridNode()
 		: bIsValid(true)
 		, Location(FVector::ZeroVector)
 		//, Bound(FBox())
 		, NodeProperty(FNodeProperty())
+		, Actor(nullptr)
 	{}
 	FGridNode(FVector Loc, FNodeProperty Property = FNodeProperty())
 		: bIsValid(true)
 		, Location(Loc)
 		//, Bound(Bound)
 		, NodeProperty(Property)
+		, Actor(nullptr)
 	{}
 	//FGridNode(FVector Loc, /*FBox Bound,*/ FNodeProperty Property)
 	//	: Location(Loc)
@@ -299,7 +309,7 @@ struct THEPROJECTWARFARE_API FGridNode
 };
 
 UCLASS(Blueprintable)
-class THEPROJECTWARFARE_API AGrid : public AActor
+class DSPATHFINDINGSYSTEM_API AGrid : public AActor
 {
 	GENERATED_BODY()
 protected:
@@ -458,6 +468,11 @@ public:
 	bool SetTileProperty(int32 index, FNodeProperty Property);
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
 	bool SetTilePropertyMap(TMap<int32, FNodeProperty> NodeProperties);
+
+	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
+	void RegisterActorToTile(int32 index, AActor* Actor, bool bAccess = false);
+	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
+	void UnregisterActorFromTile(int32 index, bool bAccess = true);
 
 private:
 	TArray<int32> GetInstancesOverlappingBox(const FBox& Box) const;
