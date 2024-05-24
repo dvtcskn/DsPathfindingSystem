@@ -447,6 +447,7 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 
 	while (loop) 
 	{
+		loop = false;
 		pass = false;
 		TMap<int32, float> NeighborIndexes_Pass1;
 		if (closedSet.Num() == 0)
@@ -463,8 +464,12 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 				NeighborIndexes_Pass2 = GetNeighborIndexes(startIndex, Preferences);
 				if (NeighborIndexes_Pass2.Num() == 0)
 				{
-					loop = false;
+					//loop = false;
 					continue;
+				}
+				else
+				{
+					loop = true;
 				}
 			}
 			else
@@ -472,8 +477,12 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 				NeighborIndexes_Pass2 = GetNeighborIndexes(inx.Key, Preferences);
 				if (NeighborIndexes_Pass2.Num() == 0)
 				{
-					loop = false;
+					//loop = false;
 					continue;
+				}
+				else
+				{
+					loop = true;
 				}
 			}
 
