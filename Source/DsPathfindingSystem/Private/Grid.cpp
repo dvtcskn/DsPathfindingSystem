@@ -464,7 +464,7 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 				if (NeighborIndexes_Pass2.Num() == 0)
 				{
 					loop = false;
-					break;
+					continue;
 				}
 			}
 			else
@@ -473,7 +473,7 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 				if (NeighborIndexes_Pass2.Num() == 0)
 				{
 					loop = false;
-					break;
+					continue;
 				}
 			}
 
