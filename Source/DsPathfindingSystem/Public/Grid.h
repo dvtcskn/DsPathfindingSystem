@@ -44,6 +44,26 @@ enum class EAStarResultState : uint8
 	InfiniteLoop	UMETA(DisplayName = "Infinite Loop")
 };
 
+UENUM(BlueprintType)
+enum class ETileType : uint8
+{
+	Grass		UMETA(DisplayName = "Grass"),
+	Water		UMETA(DisplayName = "Water"),
+	// lava, dirt, desert, road(?) etc
+};
+
+UENUM(BlueprintType)
+enum class ESearchType : uint8
+{
+	Ground		UMETA(DisplayName = "Ground"),
+	Water		UMETA(DisplayName = "Water"),
+	/*
+	* Node(Terrain) Cost Default 1.0f
+	* Ignore all obstacles
+	*/
+	Fly			UMETA(DisplayName = "Fly"),
+};
+
 /*
 * GridType
 */
@@ -80,6 +100,9 @@ struct DSPATHFINDINGSYSTEM_API FSearchResult
 	/* Total path Length */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	int32 PathLength;
+	/* Stores all found obstacles indexes */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	TArray<int32> ObstacleIndexes;
 	/* Search state */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	EAStarResultState ResultState = EAStarResultState::SearchFail;
@@ -93,6 +116,25 @@ struct DSPATHFINDINGSYSTEM_API FSearchResult
 		: TotalNodeCost(NULL)
 		, PathLength(NULL)
 		, ResultState(ResultState)
+	{};
+};
+
+/*
+* Search Functions returns
+*/
+USTRUCT(BlueprintType)
+struct DSPATHFINDINGSYSTEM_API FTileNeighborResult
+{
+	GENERATED_USTRUCT_BODY()
+
+	/* Stores all found nodes locations */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	TMap<int32, float> Neighbors;
+	/* Stores all found nodes indexes */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	TArray<int32> ObstacleIndexes;
+
+	FTileNeighborResult()
 	{};
 };
 
@@ -206,21 +248,18 @@ struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 {
 	GENERATED_USTRUCT_BODY()
 
-	/*
-	* Node(Terrain) Cost Default 1.0f
-	* Ignore all obstacles
-	*/
-	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-	uint32 bFly : 1;
-	/*AStar Function Only*/
-	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-	uint32 bStopAtNeighborLocation : 1;
 	/*SQUARE GRID ONLY*/
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	uint32 bDiagonal : 1;
 	/* Node(Terrain) Cost Default 1.0f */
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	uint32 bOverrideNodeCostToOne : 1;
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	uint32 bIgnorePlayerCharacters : 1;
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	int32 PlayerIDToIgnore;
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	uint32 bRecordObstacleIndexes : 1;
 	/*
 	* Prototype ONLY
 	* C++ and Blueprint communication is laggy
@@ -229,10 +268,11 @@ struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 	uint32 bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY : 1;
 
 	FAStarPreferences()
-		: bFly(false)
-		, bStopAtNeighborLocation(false)
-		, bDiagonal(true)
+		: bDiagonal(true)
 		, bOverrideNodeCostToOne(false)
+		, bIgnorePlayerCharacters(false)
+		, PlayerIDToIgnore(0)
+		, bRecordObstacleIndexes(false)
 		, bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY(false)
 	{}
 };
@@ -258,9 +298,18 @@ struct DSPATHFINDINGSYSTEM_API FNodeProperty
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	float NodeCost = 1.0f;
 
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	ETileType TileType;
+	
 	FNodeProperty()
 		: bAccess(true)
 		, NodeCost(1.0f)
+		, TileType(ETileType::Grass)
+	{}
+	FNodeProperty(uint32 Access, float Cost, ETileType TileType)
+		: bAccess(Access)
+		, NodeCost(Cost)
+		, TileType(TileType)
 	{}
 };
 
@@ -335,17 +384,12 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	/*
-	* Grid creation
-	*/
-	virtual void OnConstruction(const FTransform& Transform) override;
-
-	/*
 	* Node cost and access logic.
 	* NeighborIndex is important. You need to return NeighborIndex(Node) values.
 	* The direction tells the neighbor index to go according to the Current Index.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Logic")
-	virtual FNodeProperty NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::None);
+	virtual FNodeProperty NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, FAStarPreferences Preferences, ESearchType SearchType/* = ESearchType::Ground*/, ENeighborDirection Direction = ENeighborDirection::None);
 
 	/*
 	* Node cost and access logic
@@ -355,8 +399,8 @@ public:
 	* C++ and Blueprint communication is laggy
 	*/
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DsPathfindingSystem|Blueprint")
-	FNodeProperty NodeBehaviorBlueprint(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::None);
-	virtual FNodeProperty NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction = ENeighborDirection::None);
+	FNodeProperty NodeBehaviorBlueprint(int32 CurrentIndex, int32 NeighborIndex, FAStarPreferences Preferences, ESearchType SearchType /*= ESearchType::Ground*/, ENeighborDirection Direction = ENeighborDirection::None);
+	virtual FNodeProperty NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, FAStarPreferences Preferences, ESearchType SearchType /*= ESearchType::Ground*/, ENeighborDirection Direction = ENeighborDirection::None);
 
 	/*
 	* Main pathfinding function
@@ -365,14 +409,14 @@ public:
 	* if terrain cost is 100.0 this can be 10
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-	FSearchResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, float NodeCostScale = 1000.0f);
+	FSearchResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false, ESearchType SearchType = ESearchType::Ground, float NodeCostScale = 1000.0f);
 
 	/*
 	* Finds all accessible nodes at range
 	* For accurate pathfinding (e.g follow road) you need to set default terrain cost value
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-	FSearchResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, float DefaultNodeCost = 1.0f);
+	FSearchResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType /*= ESearchType::Ground*/, float DefaultNodeCost = 1.0f);
 	/*
 	* For PathSearchAtRange function reconstructing paths
 	*/
@@ -393,7 +437,7 @@ public:
 	*	EAST and WEST SQUARE Grid Only
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar")
-	TMap<int32, float> GetNeighborIndexes(int32 index, FAStarPreferences Preferences);
+	FTileNeighborResult GetNeighborIndexes(int32 index, FAStarPreferences Preferences, ESearchType SearchType/* = ESearchType::Ground*/);
 
 	/*
 	* Return neighbor node indexes with given index value without checking is accessible
@@ -436,7 +480,7 @@ public:
 	FBox GetTileBox(int32 index);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-	int32 GetNeighborIndex(int32 index, ENeighborDirection Direction, FAStarPreferences Preferences = FAStarPreferences());
+	int32 GetNeighborIndex(int32 index, ENeighborDirection Direction, FAStarPreferences Preferences = FAStarPreferences(), ESearchType SearchType = ESearchType::Ground);
 
 	/* 
 	* BP only (pure)
@@ -470,9 +514,9 @@ public:
 	bool SetTilePropertyMap(TMap<int32, FNodeProperty> NodeProperties);
 
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
-	void RegisterActorToTile(int32 index, AActor* Actor, bool bAccess = false);
+	void RegisterActorToTile(int32 index, AActor* Actor);
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
-	void UnregisterActorFromTile(int32 index, bool bAccess = true);
+	void UnregisterActorFromTile(int32 index);
 
 private:
 	TArray<int32> GetInstancesOverlappingBox(const FBox& Box) const;
