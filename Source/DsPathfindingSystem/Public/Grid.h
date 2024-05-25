@@ -1,7 +1,7 @@
 /*
 * DsPathfindingSystem
 * Plugin code
-* Copyright (c) 2024 Davut Co�kun
+* Copyright (c) 2024 Davut Coşkun
 * All Rights Reserved.
 */
 
