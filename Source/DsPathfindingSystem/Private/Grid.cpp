@@ -42,11 +42,6 @@ AGrid::AGrid()
 	PrimaryActorTick.bCanEverTick = false;
 }
 
-void AGrid::OnConstruction(const FTransform& Transform)
-{
-	Super::OnConstruction(Transform);
-}
-
 // Called when the game starts or when spawned
 void AGrid::BeginPlay()
 {
@@ -132,44 +127,44 @@ FBox AGrid::GetTileBox(int32 index)
 	return TileBound.MoveTo(GetTile(index).Location);
 }
 
-int32 AGrid::GetNeighborIndex(int32 index, ENeighborDirection Direction, FAStarPreferences Preferences)
+int32 AGrid::GetNeighborIndex(int32 index, ENeighborDirection Direction, FAStarPreferences Preferences, ESearchType SearchType)
 {
-	TMap<int32, float> Indices = GetNeighborIndexes(index, Preferences);
+	FTileNeighborResult Indices = GetNeighborIndexes(index, Preferences, SearchType);
 	FNeighbors Neighbors = calculateNeighborIndexes(index);
 	switch (Direction)
 	{
 	case ENeighborDirection::None:
 		return -1;
 	case ENeighborDirection::NORTH:
-		if (Indices.Contains(Neighbors.NORTH))
+		if (Indices.Neighbors.Contains(Neighbors.NORTH))
 			return Neighbors.NORTH;
 		return -1;
 	case ENeighborDirection::NORTH_EAST:
-		if (Indices.Contains(Neighbors.NORTHEAST))
+		if (Indices.Neighbors.Contains(Neighbors.NORTHEAST))
 			return Neighbors.NORTHEAST;
 		return -1;
 	case ENeighborDirection::EAST:
-		if (Indices.Contains(Neighbors.EAST))
+		if (Indices.Neighbors.Contains(Neighbors.EAST))
 			return Neighbors.EAST;
 		return -1;
 	case ENeighborDirection::SOUTH_EAST:
-		if (Indices.Contains(Neighbors.SOUTHEAST))
+		if (Indices.Neighbors.Contains(Neighbors.SOUTHEAST))
 			return Neighbors.SOUTHEAST;
 		return -1;
 	case ENeighborDirection::SOUTH:
-		if (Indices.Contains(Neighbors.SOUTH))
+		if (Indices.Neighbors.Contains(Neighbors.SOUTH))
 			return Neighbors.SOUTH;
 		return -1;
 	case ENeighborDirection::SOUTH_WEST:
-		if (Indices.Contains(Neighbors.SOUTHWEST))
+		if (Indices.Neighbors.Contains(Neighbors.SOUTHWEST))
 			return Neighbors.SOUTHWEST;
 		return -1;
 	case ENeighborDirection::WEST:
-		if (Indices.Contains(Neighbors.WEST))
+		if (Indices.Neighbors.Contains(Neighbors.WEST))
 			return Neighbors.WEST;
 		return -1;
 	case ENeighborDirection::NORTH_WEST:
-		if (Indices.Contains(Neighbors.NORTHWEST))
+		if (Indices.Neighbors.Contains(Neighbors.NORTHWEST))
 			return Neighbors.NORTHWEST;
 		return -1;
 	}
@@ -254,7 +249,7 @@ FGridNode AGrid::GetTileByIndex(int32 index)
 //	return -BIG_NUMBER;
 //}
 
-FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, float NodeCostScale)
+FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation, ESearchType SearchType, float NodeCostScale)
 {
 	SCOPE_CYCLE_COUNTER(STAT_ASTARSEARCH);
 
@@ -316,9 +311,13 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 			return Result;
 		};
 
+	const bool bFly = SearchType == ESearchType::Fly;
+
 	FSearchResult			AStarResult;
 	TMap<int32, FANode>		GridGraph;
 	FNeighbors				stopAtNeighbor;
+
+	TArray<int32> ObstacleIndexes;
 
 	if (NodeCostScale < 1.0f)
 		NodeCostScale = 1.0f;
@@ -334,7 +333,7 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 
 	fCostHeap.Heapify(Predicate);
 
-	if (startIndex < 0 || endIndex < 0 || startIndex > TotalGridSize || endIndex > TotalGridSize || !NodeBehavior(-1, endIndex).bAccess)
+	if (startIndex < 0 || endIndex < 0 || startIndex > TotalGridSize || endIndex > TotalGridSize || !NodeBehavior(-1, endIndex, Preferences, SearchType).bAccess)
 		return AStarResult;
 
 	if (startIndex == endIndex) {
@@ -342,16 +341,16 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 		return AStarResult;
 	}
 
-	if (Preferences.bStopAtNeighborLocation)
+	if (bStopAtNeighborLocation)
 		stopAtNeighbor = calculateNeighborIndexes(endIndex);
 
 	while (fCostHeap.Num() != 0) 
 	{
 		int32 CurrentIndex = fCostHeap[0].OpenSetIndex;
 
-		if (Preferences.bStopAtNeighborLocation ? stopAtNeighbor.Contains(CurrentIndex) : CurrentIndex == endIndex)
+		if (bStopAtNeighborLocation ? stopAtNeighbor.Contains(CurrentIndex) : CurrentIndex == endIndex)
 		{
-			if (Preferences.bStopAtNeighborLocation) {
+			if (bStopAtNeighborLocation) {
 				AStarResult = Retrace(startIndex, CurrentIndex, GridGraph);
 			}
 			else {
@@ -364,26 +363,29 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 		auto& CurrentNode = GridGraph.FindOrAdd(CurrentIndex);
 		CurrentNode.Closed = true;
 
-		TMap<int32, float> NeighborIndexes = GetNeighborIndexes(CurrentIndex, Preferences);
+		FTileNeighborResult NeighborIndexes = GetNeighborIndexes(CurrentIndex, Preferences, SearchType);
 		//if (NeighborIndexes.Num())
 		//	return FAStarResult();
 
-		for (const auto& Tile : NeighborIndexes)
+		if (Preferences.bRecordObstacleIndexes)
+			ObstacleIndexes.Append(NeighborIndexes.ObstacleIndexes);
+
+		for (const auto& Tile : NeighborIndexes.Neighbors)
 		{
 			auto& NextNode = GridGraph.FindOrAdd(Tile.Key);
 
 			if (!NextNode.Closed)
 			{
-				float TraversalCost = (CurrentNode.TraversalCost + FIOctileDistance(Instances[CurrentIndex].Location, Instances[Tile.Key].Location)) + (Preferences.bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : (Tile.Value * NodeCostScale));
+				float TraversalCost = (CurrentNode.TraversalCost + FIOctileDistance(Instances[CurrentIndex].Location, Instances[Tile.Key].Location)) + (bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : (Tile.Value * NodeCostScale));
 
 				auto PredicateIndex = [&](const FANode fCostH) {return fCostH.OpenSetIndex == Tile.Key; };
 
 				if (TraversalCost < NextNode.TraversalCost || !fCostHeap.ContainsByPredicate(PredicateIndex))
 				{
-					NextNode.NodeCost = Preferences.bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value;
+					NextNode.NodeCost = bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value;
 					NextNode.TraversalCost = TraversalCost;
 					NextNode.parent = CurrentIndex;
-					NextNode.NodeCostCount = CurrentNode.NodeCostCount + Preferences.bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value;
+					NextNode.NodeCostCount = CurrentNode.NodeCostCount + bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value;
 					NextNode.parentCount = CurrentNode.parentCount + 1;
 					NextNode.OpenSetIndex = Tile.Key;
 					NextNode.HeuristicCost = FIOctileDistance(Instances[Tile.Key].Location, Instances[endIndex].Location);	// NodePredicate
@@ -397,10 +399,19 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 			}
 		}
 	}
+
+	if (Preferences.bRecordObstacleIndexes)
+	{
+		for (const auto& idx : ObstacleIndexes)
+		{
+			AStarResult.ObstacleIndexes.AddUnique(idx);
+		}
+	}
+
 	return AStarResult;
 }
 
-FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, float DefaultNodeCost)
+FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType, float DefaultNodeCost)
 {
 	SCOPE_CYCLE_COUNTER(STAT_PathSearchAtRange);
 
@@ -433,10 +444,14 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 	if (DefaultNodeCost < 1.0f)
 		DefaultNodeCost = 1.0f;
 
+	const bool bFly = SearchType == ESearchType::Fly;
+
 	TMap<int32, float> closedSet;
 	TMap<int32, float> openSet;
 	TMap<int32, float> FinalSet;
 	TMap<int32, FANode>	Node;
+
+	TArray<int32> ObstacleIndexes;
 
 	openSet.Add(startIndex, 1.0f);
 
@@ -449,22 +464,24 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 	{
 		loop = false;
 		pass = false;
-		TMap<int32, float> NeighborIndexes_Pass1;
+		FTileNeighborResult NeighborIndexes_Pass1;
 		if (closedSet.Num() == 0)
 		{
-			NeighborIndexes_Pass1 = GetNeighborIndexes(startIndex, Preferences);
-			if (NeighborIndexes_Pass1.Num() == 0)
+			NeighborIndexes_Pass1 = GetNeighborIndexes(startIndex, Preferences, SearchType);
+			if (NeighborIndexes_Pass1.Neighbors.Num() == 0)
 				break;
+
+			if (Preferences.bRecordObstacleIndexes)
+				ObstacleIndexes.Append(NeighborIndexes_Pass1.ObstacleIndexes);
 		}
-		for (const auto& inx : closedSet.Num() == 0 ? NeighborIndexes_Pass1 : closedSet)
+		for (const auto& inx : closedSet.Num() == 0 ? NeighborIndexes_Pass1.Neighbors : closedSet)
 		{
-			TMap<int32, float> NeighborIndexes_Pass2;
+			FTileNeighborResult NeighborIndexes_Pass2;
 			if (closedSet.Num() == 0)
 			{
-				NeighborIndexes_Pass2 = GetNeighborIndexes(startIndex, Preferences);
-				if (NeighborIndexes_Pass2.Num() == 0)
+				NeighborIndexes_Pass2 = GetNeighborIndexes(startIndex, Preferences, SearchType);
+				if (NeighborIndexes_Pass2.Neighbors.Num() == 0)
 				{
-					//loop = false;
 					continue;
 				}
 				else
@@ -474,10 +491,9 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 			}
 			else
 			{
-				NeighborIndexes_Pass2 = GetNeighborIndexes(inx.Key, Preferences);
-				if (NeighborIndexes_Pass2.Num() == 0)
+				NeighborIndexes_Pass2 = GetNeighborIndexes(inx.Key, Preferences, SearchType);
+				if (NeighborIndexes_Pass2.Neighbors.Num() == 0)
 				{
-					//loop = false;
 					continue;
 				}
 				else
@@ -486,7 +502,10 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 				}
 			}
 
-			for (const auto& loc : NeighborIndexes_Pass2)
+			if (Preferences.bRecordObstacleIndexes)
+				ObstacleIndexes.Append(NeighborIndexes_Pass2.ObstacleIndexes);
+
+			for (const auto& loc : NeighborIndexes_Pass2.Neighbors)
 			{
 				if (loc.Key != startIndex) 
 				{
@@ -495,8 +514,8 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 					auto& NodeFragment = Node.FindOrAdd(loc.Key);
 
 					float NodeCost = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ?
-						NodeBehaviorBlueprint(inx.Key, loc.Key, GetNodeDirection(closedSet.Num() == 0 ? startIndex : inx.Key, loc.Key)).NodeCost
-						: NodeBehavior(inx.Key, loc.Key, GetNodeDirection(closedSet.Num() == 0 ? startIndex : inx.Key, loc.Key)).NodeCost;
+						NodeBehaviorBlueprint(inx.Key, loc.Key, Preferences, SearchType, GetNodeDirection(closedSet.Num() == 0 ? startIndex : inx.Key, loc.Key)).NodeCost
+						: NodeBehavior(inx.Key, loc.Key, Preferences, SearchType, GetNodeDirection(closedSet.Num() == 0 ? startIndex : inx.Key, loc.Key)).NodeCost;
 					NodeFragment.NodeCost = NodeCost;
 
 					float tentativeCost = Node.FindOrAdd(inx.Key).NodeCostCount + NodeFragment.NodeCost;
@@ -504,11 +523,11 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 					if (tentativeCost < NodeFragment.NodeCostCount || !openSet.Contains(loc.Key))
 					{
 						NodeFragment.parent = closedSet.Num() == 0 ? startIndex : inx.Key;
-						NodeFragment.NodeCostCount = Preferences.bOverrideNodeCostToOne || Preferences.bFly ? Node.FindOrAdd(NodeFragment.parent).NodeCostCount + 1
+						NodeFragment.NodeCostCount = Preferences.bOverrideNodeCostToOne || bFly ? Node.FindOrAdd(NodeFragment.parent).NodeCostCount + 1
 							: NodeCost + Node.FindOrAdd(NodeFragment.parent).NodeCostCount;
 						loop = true;
 						pass = true;
-						if (NodeFragment.NodeCostCount <= (Preferences.bOverrideNodeCostToOne || Preferences.bFly ? atRange : atRange * DefaultNodeCost))
+						if (NodeFragment.NodeCostCount <= (Preferences.bOverrideNodeCostToOne || bFly ? atRange : atRange * DefaultNodeCost))
 						{
 							NodeFragment.parentCount = Node.FindOrAdd(NodeFragment.parent).parentCount + 1;
 							openSet.FindOrAdd(loc.Key) = (loc.Key, NodeCost);
@@ -549,6 +568,14 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 			Result.Parents.Add(inx.Key, Node[inx.Key].parent);
 			Result.PathIndexes.Add(inx.Key);
 			Result.PathCosts.Add(inx.Key, inx.Value);
+		}
+	}
+
+	if (Preferences.bRecordObstacleIndexes)
+	{
+		for (const auto& idx : ObstacleIndexes)
+		{
+			Result.ObstacleIndexes.AddUnique(idx);
 		}
 	}
 
@@ -688,138 +715,173 @@ FNeighbors AGrid::calculateNeighborIndexes(int32 index)
 *			+---+---+---+
 *	EAST and WEST SQUARE Grid Only
 */
-TMap<int32, float> AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Preferences)
+FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Preferences, ESearchType SearchType)
 {
 	SCOPE_CYCLE_COUNTER(STAT_GetNeighborIndexes);
 
+	FTileNeighborResult Result;
 	FNeighbors Neighbors = calculateNeighborIndexes(index);
-	if (Preferences.bFly)
+	if (SearchType == ESearchType::Fly)
 	{
 		if (gridType == EGridType::E_Square && !Preferences.bDiagonal)
 		{
-			TMap<int32, float> result;
 			if (Neighbors.EAST != -1)
-				result.Add(Neighbors.EAST, 1.0);
+				Result.Neighbors.Add(Neighbors.EAST, 1.0);
 			if (Neighbors.WEST != -1)
-				result.Add(Neighbors.WEST, 1.0);
+				Result.Neighbors.Add(Neighbors.WEST, 1.0);
 			if (Neighbors.SOUTH != -1)
-				result.Add(Neighbors.SOUTH, 1.0);
+				Result.Neighbors.Add(Neighbors.SOUTH, 1.0);
 			if (Neighbors.NORTH != -1)
-				result.Add(Neighbors.NORTH, 1.0);
-			return result;
+				Result.Neighbors.Add(Neighbors.NORTH, 1.0);
+			return Result;
 		}
-		return Neighbors.GetAllNodes();
+		else
+		{
+			Result.Neighbors = Neighbors.GetAllNodes();
+			return Result;
+		}
 	}
 
 	//TBitArray<FDefaultBitArrayAllocator> DiagonalBranch;
 	//DiagonalBranch.Init(gridType == EGridType::E_Hex || Preferences.bDiagonal ? true : false, 8);
 
-	TMap<int32, float> result;
 	FNodeProperty Access;
 
 	if (Neighbors.EAST <= TotalGridSize && Neighbors.EAST >= 0 && gridType == EGridType::E_Square) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.EAST, ENeighborDirection::EAST) : NodeBehavior(index, Neighbors.EAST, ENeighborDirection::EAST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.EAST, Preferences, SearchType, ENeighborDirection::EAST) : NodeBehavior(index, Neighbors.EAST, Preferences, SearchType, ENeighborDirection::EAST);
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[0] = true;
-			result.Add(Neighbors.EAST, Access.NodeCost);
+			Result.Neighbors.Add(Neighbors.EAST, Access.NodeCost);
+		}
+		else if (Preferences.bRecordObstacleIndexes)
+		{
+			Result.ObstacleIndexes.Add(Neighbors.EAST);
 		}
 	}
 	if (Neighbors.WEST <= TotalGridSize && Neighbors.WEST >= 0 && gridType == EGridType::E_Square)
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.WEST, ENeighborDirection::WEST) : NodeBehavior(index, Neighbors.WEST, ENeighborDirection::WEST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.WEST, Preferences, SearchType, ENeighborDirection::WEST) : NodeBehavior(index, Neighbors.WEST, Preferences, SearchType, ENeighborDirection::WEST);
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[1] = true;
-			result.Add(Neighbors.WEST, Access.NodeCost);
+			Result.Neighbors.Add(Neighbors.WEST, Access.NodeCost);
+		}
+		else if (Preferences.bRecordObstacleIndexes)
+		{
+			Result.ObstacleIndexes.Add(Neighbors.WEST);
 		}
 	}
 	if (Neighbors.SOUTH <= TotalGridSize && Neighbors.SOUTH >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTH, ENeighborDirection::SOUTH) : NodeBehavior(index, Neighbors.SOUTH, ENeighborDirection::SOUTH);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTH, Preferences, SearchType, ENeighborDirection::SOUTH) : NodeBehavior(index, Neighbors.SOUTH, Preferences, SearchType, ENeighborDirection::SOUTH);
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[2] = true;
-			result.Add(Neighbors.SOUTH, Access.NodeCost);
+			Result.Neighbors.Add(Neighbors.SOUTH, Access.NodeCost);
+		}
+		else if (Preferences.bRecordObstacleIndexes)
+		{
+			Result.ObstacleIndexes.Add(Neighbors.SOUTH);
 		}
 	}
 	if (Neighbors.NORTH <= TotalGridSize && Neighbors.NORTH >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTH, ENeighborDirection::NORTH) : NodeBehavior(index, Neighbors.NORTH, ENeighborDirection::NORTH);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTH, Preferences, SearchType, ENeighborDirection::NORTH) : NodeBehavior(index, Neighbors.NORTH, Preferences, SearchType, ENeighborDirection::NORTH);
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[3] = true;
-			result.Add(Neighbors.NORTH, Access.NodeCost);
+			Result.Neighbors.Add(Neighbors.NORTH, Access.NodeCost);
+		}
+		else if (Preferences.bRecordObstacleIndexes)
+		{
+			Result.ObstacleIndexes.Add(Neighbors.NORTH);
 		}
 	}
 
 	if (Neighbors.SOUTHEAST <= TotalGridSize && Neighbors.SOUTHEAST >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHEAST, ENeighborDirection::SOUTH_EAST) : NodeBehavior(index, Neighbors.SOUTHEAST, ENeighborDirection::SOUTH_EAST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHEAST, Preferences, SearchType, ENeighborDirection::SOUTH_EAST) : NodeBehavior(index, Neighbors.SOUTHEAST, Preferences, SearchType, ENeighborDirection::SOUTH_EAST);
 		if (/*(DiagonalBranch[0] && DiagonalBranch[2]) &&*/ Access.bAccess)
 		{
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
 			{
 				//DiagonalBranch[4] = true;
-				result.Add(Neighbors.SOUTHEAST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.SOUTHEAST, Access.NodeCost);
 			}
 			else if (gridType == EGridType::E_Hex)
 			{
-				result.Add(Neighbors.SOUTHEAST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.SOUTHEAST, Access.NodeCost);
 			}
+		}
+		else if (Preferences.bRecordObstacleIndexes)
+		{
+			Result.ObstacleIndexes.Add(Neighbors.SOUTHEAST);
 		}
 	}
 	if (Neighbors.SOUTHWEST <= TotalGridSize && Neighbors.SOUTHWEST >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHWEST, ENeighborDirection::SOUTH_WEST) : NodeBehavior(index, Neighbors.SOUTHWEST, ENeighborDirection::SOUTH_WEST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.SOUTHWEST, Preferences, SearchType, ENeighborDirection::SOUTH_WEST) : NodeBehavior(index, Neighbors.SOUTHWEST, Preferences, SearchType, ENeighborDirection::SOUTH_WEST);
 		if (/*(DiagonalBranch[2] && DiagonalBranch[1]) &&*/ Access.bAccess)
 		{
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
 			{
 				//DiagonalBranch[5] = true;
-				result.Add(Neighbors.SOUTHWEST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.SOUTHWEST, Access.NodeCost);
 			}
 			else if (gridType == EGridType::E_Hex)
 			{
-				result.Add(Neighbors.SOUTHWEST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.SOUTHWEST, Access.NodeCost);
 			}
+		}
+		else if (Preferences.bRecordObstacleIndexes)
+		{
+			Result.ObstacleIndexes.Add(Neighbors.SOUTHWEST);
 		}
 	}
 	if (Neighbors.NORTHWEST <= TotalGridSize && Neighbors.NORTHWEST >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTHWEST, ENeighborDirection::NORTH_WEST) : NodeBehavior(index, Neighbors.NORTHWEST, ENeighborDirection::NORTH_WEST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTHWEST, Preferences, SearchType, ENeighborDirection::NORTH_WEST) : NodeBehavior(index, Neighbors.NORTHWEST, Preferences, SearchType, ENeighborDirection::NORTH_WEST);
 		if (/*(DiagonalBranch[1] && DiagonalBranch[3]) &&*/ Access.bAccess)
 		{
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
 			{
 				//DiagonalBranch[6] = true;
-				result.Add(Neighbors.NORTHWEST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.NORTHWEST, Access.NodeCost);
 			}
 			else if (gridType == EGridType::E_Hex)
 			{
-				result.Add(Neighbors.NORTHWEST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.NORTHWEST, Access.NodeCost);
 			}
+		}
+		else if (Preferences.bRecordObstacleIndexes)
+		{
+			Result.ObstacleIndexes.Add(Neighbors.NORTHWEST);
 		}
 	}
 	if (Neighbors.NORTHEAST <= TotalGridSize && Neighbors.NORTHEAST >= 0) 
 	{
-		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTHEAST, ENeighborDirection::NORTH_EAST) : NodeBehavior(index, Neighbors.NORTHEAST, ENeighborDirection::NORTH_EAST);
+		Access = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ? NodeBehaviorBlueprint(index, Neighbors.NORTHEAST, Preferences, SearchType, ENeighborDirection::NORTH_EAST) : NodeBehavior(index, Neighbors.NORTHEAST, Preferences, SearchType, ENeighborDirection::NORTH_EAST);
 		if (/*(DiagonalBranch[3] && DiagonalBranch[0]) &&*/ Access.bAccess)
 		{
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
 			{
 				//DiagonalBranch[7] = true;
-				result.Add(Neighbors.NORTHEAST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.NORTHEAST, Access.NodeCost);
 			}
 			else if (gridType == EGridType::E_Hex)
 			{
-				result.Add(Neighbors.NORTHEAST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.NORTHEAST, Access.NodeCost);
 			}
+		}
+		else if (Preferences.bRecordObstacleIndexes)
+		{
+			Result.ObstacleIndexes.Add(Neighbors.NORTHEAST);
 		}
 	}
 
-	return result;
+	return Result;
 }
 
 ENeighborDirection AGrid::GetNodeDirection(int32 CurrentIndex, int32 NextIndex)
@@ -850,18 +912,18 @@ ENeighborDirection AGrid::GetNodeDirection(int32 CurrentIndex, int32 NextIndex)
 	return Direction;
 }
 
-FNodeProperty AGrid::NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction)
+FNodeProperty AGrid::NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, FAStarPreferences Preferences, ESearchType SearchType, ENeighborDirection Direction)
 {
 	SCOPE_CYCLE_COUNTER(STAT_AccessNode);
 
 	//FNodeProperty result;
 	//result.bAccess = true;
-	//result.NodeCost = 1.0f;
+	//result.NodeCost = Node.NodeProperty.NodeCost;
 
 	return Instances[NeighborIndex].NodeProperty;
 }
 
-FNodeProperty AGrid::NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, ENeighborDirection Direction)
+FNodeProperty AGrid::NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, FAStarPreferences Preferences, ESearchType SearchType, ENeighborDirection Direction)
 {
 	SCOPE_CYCLE_COUNTER(STAT_AccessNodeBlueprint);
 
@@ -979,21 +1041,21 @@ bool AGrid::SetTilePropertyMap(TMap<int32, FNodeProperty> NodeProperties)
 	return true;
 }
 
-void AGrid::RegisterActorToTile(int32 index, AActor* Actor, bool bAccess)
+void AGrid::RegisterActorToTile(int32 index, AActor* Actor)
 {
 	if (index < 0 || index > TotalGridSize || !Actor)
 		return;
 
-	Instances[index].NodeProperty.bAccess = bAccess;
+	Instances[index].NodeProperty.bAccess = false;
 	Instances[index].Actor = Actor;
 }
 
-void AGrid::UnregisterActorFromTile(int32 index, bool bAccess)
+void AGrid::UnregisterActorFromTile(int32 index)
 {
 	if (index < 0 || index > TotalGridSize)
 		return;
 
-	Instances[index].NodeProperty.bAccess = bAccess;
+	Instances[index].NodeProperty.bAccess = true;
 	Instances[index].Actor = nullptr;
 }
 
