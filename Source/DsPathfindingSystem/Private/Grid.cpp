@@ -1,7 +1,7 @@
 /*
 * DsPathfindingSystem
 * Plugin code
-* Copyright (c) 2024 Davut Coşkun
+* Copyright (c) 2023 Davut Coşkun
 * All Rights Reserved.
 */
 
@@ -125,51 +125,6 @@ FBox AGrid::GetTileBox(int32 index)
 	if (index < 0 || index > TotalGridSize)
 		return FBox();
 	return TileBound.MoveTo(GetTile(index).Location);
-}
-
-int32 AGrid::GetNeighborIndex(int32 index, ENeighborDirection Direction, FAStarPreferences Preferences, ESearchType SearchType)
-{
-	FTileNeighborResult Indices = GetNeighborIndexes(index, Preferences, SearchType);
-	FNeighbors Neighbors = calculateNeighborIndexes(index);
-	switch (Direction)
-	{
-	case ENeighborDirection::None:
-		return -1;
-	case ENeighborDirection::NORTH:
-		if (Indices.Neighbors.Contains(Neighbors.NORTH))
-			return Neighbors.NORTH;
-		return -1;
-	case ENeighborDirection::NORTH_EAST:
-		if (Indices.Neighbors.Contains(Neighbors.NORTHEAST))
-			return Neighbors.NORTHEAST;
-		return -1;
-	case ENeighborDirection::EAST:
-		if (Indices.Neighbors.Contains(Neighbors.EAST))
-			return Neighbors.EAST;
-		return -1;
-	case ENeighborDirection::SOUTH_EAST:
-		if (Indices.Neighbors.Contains(Neighbors.SOUTHEAST))
-			return Neighbors.SOUTHEAST;
-		return -1;
-	case ENeighborDirection::SOUTH:
-		if (Indices.Neighbors.Contains(Neighbors.SOUTH))
-			return Neighbors.SOUTH;
-		return -1;
-	case ENeighborDirection::SOUTH_WEST:
-		if (Indices.Neighbors.Contains(Neighbors.SOUTHWEST))
-			return Neighbors.SOUTHWEST;
-		return -1;
-	case ENeighborDirection::WEST:
-		if (Indices.Neighbors.Contains(Neighbors.WEST))
-			return Neighbors.WEST;
-		return -1;
-	case ENeighborDirection::NORTH_WEST:
-		if (Indices.Neighbors.Contains(Neighbors.NORTHWEST))
-			return Neighbors.NORTHWEST;
-		return -1;
-	}
-
-	return -1;
 }
 
 FGridNode AGrid::GetTileByIndex(int32 index)
@@ -319,6 +274,8 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 
 	TArray<int32> ObstacleIndexes;
 
+	AStarResult.bIsDiagonal = Preferences.bDiagonal;
+
 	if (NodeCostScale < 1.0f)
 		NodeCostScale = 1.0f;
 
@@ -342,7 +299,7 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 	}
 
 	if (bStopAtNeighborLocation)
-		stopAtNeighbor = calculateNeighborIndexes(endIndex);
+		stopAtNeighbor = CalculateNeighborIndexes(endIndex);
 
 	while (fCostHeap.Num() != 0) 
 	{
@@ -440,6 +397,8 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 	};
 
 	FSearchResult Result;
+
+	Result.bIsDiagonal = Preferences.bDiagonal;
 
 	if (DefaultNodeCost < 1.0f)
 		DefaultNodeCost = 1.0f;
@@ -582,13 +541,13 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 	return Result;
 }
 
-FSearchResult AGrid::retracePath(int32 startIndex, int32 endIndex, FSearchResult StructData)
+FSearchResult AGrid::RetracePath(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData)
 {
 	SCOPE_CYCLE_COUNTER(STAT_ReTracePath);
 
 	FSearchResult AResult;
 
-	if (startIndex < 0 || endIndex < 0 || !StructData.PathIndexes.Contains(endIndex)) {
+	if (startIndex < 0 || endIndex < 0 || (!bStopAtNeighborLocation && !StructData.PathIndexes.Contains(endIndex))) {
 		AResult.ResultState = EAStarResultState::SearchFail;
 		return AResult;
 	}
@@ -597,10 +556,81 @@ FSearchResult AGrid::retracePath(int32 startIndex, int32 endIndex, FSearchResult
 		return AResult;
 	}
 
-	int32 currentIndex = endIndex;
-	int32 debugCount = NULL;
+	auto Retrace = [&](const int32 startIndex, const int32 endIndex, const FSearchResult& StructData) -> FSearchResult
+	{
+			FSearchResult SearchResult;
+			SearchResult.bIsDiagonal = StructData.bIsDiagonal;
+			int32 currentIndex = endIndex;
+			int32 debugCount = NULL;
 
-	while (currentIndex != startIndex)
+			while (currentIndex != startIndex)
+			{
+				if (debugCount > TotalGridSize) { SearchResult.ResultState = EAStarResultState::InfiniteLoop; return SearchResult; }
+
+				if (currentIndex <= -1) {
+					SearchResult.ResultState = EAStarResultState::SearchFail;
+					return SearchResult;
+				}
+
+				FVector currentVector = Instances[currentIndex].Location;
+				SearchResult.PathResults.Insert(currentVector, 0);
+				SearchResult.PathIndexes.Insert(currentIndex, 0);
+				SearchResult.PathLength = SearchResult.PathLength + 1;
+				if (StructData.PathCosts.Find(currentIndex)) {
+					float currentCost = StructData.PathCosts[currentIndex];
+					SearchResult.TotalNodeCost += currentCost;
+					SearchResult.PathCosts.Add(currentIndex, currentCost);
+				}
+				if (StructData.Parents.Find(currentIndex)) {
+					SearchResult.Parents.Add(currentIndex, *StructData.Parents.Find(currentIndex));
+					currentIndex = *StructData.Parents.Find(currentIndex);
+				}
+				else {
+					SearchResult.ResultState = EAStarResultState::SearchFail;
+					return SearchResult;
+				}
+				debugCount++;
+			}
+
+			SearchResult.ResultState = EAStarResultState::SearchSuccess;
+			return SearchResult;
+	};
+
+	if (bStopAtNeighborLocation)
+	{
+		TArray<int32> EndIndexes = CalculateNeighborIndexesAsArray(endIndex, StructData.bIsDiagonal);
+		TArray<FSearchResult> SearchResults;
+		for (const auto& EndIndex : EndIndexes)
+		{
+			if (!StructData.PathIndexes.Contains(EndIndex) || NeighborIndexesToFilter.Contains(EndIndex))
+				continue;
+			FSearchResult SearchResult = Retrace(startIndex, EndIndex, StructData);
+			if (SearchResult.ResultState == EAStarResultState::SearchSuccess)
+				SearchResults.Add(SearchResult);
+		}
+
+		float PathCost = MAX_flt; //TNumericLimits<float>::Max;
+		FSearchResult SearchResult;
+		for (const auto& Result : SearchResults)
+		{
+			if (Result.TotalNodeCost <= PathCost)
+			{
+				PathCost = Result.TotalNodeCost;
+				SearchResult = Result;
+			}
+		}
+
+		return SearchResult;
+	}
+
+	return Retrace(startIndex, endIndex, StructData);
+
+
+
+	//int32 currentIndex = endIndex;
+	//int32 debugCount = NULL;
+
+	/*while (currentIndex != startIndex)
 	{
 		if (debugCount > TotalGridSize) { AResult.ResultState = EAStarResultState::InfiniteLoop; return AResult; }
 
@@ -628,22 +658,12 @@ FSearchResult AGrid::retracePath(int32 startIndex, int32 endIndex, FSearchResult
 		}
 		debugCount++;
 	}
-	AResult.ResultState = EAStarResultState::SearchSuccess;
+	AResult.ResultState = EAStarResultState::SearchSuccess;*/
 
-	/*if (GetTile(endIndex).Actor)
-	{
-		AResult.PathResults.RemoveAt(AResult.PathResults.Num() - 1);
-		AResult.PathIndexes.RemoveAt(AResult.PathResults.Num() - 1);
-		AResult.PathLength--;
-		AResult.TotalNodeCost -= GetTile(endIndex).NodeProperty.NodeCost;
-		AResult.PathCosts.Remove(endIndex);
-		AResult.Parents.Remove(endIndex);
-	}*/
-
-	return AResult;
+	//return AResult;
 }
 
-FNeighbors AGrid::calculateNeighborIndexes(int32 index)
+FNeighbors AGrid::CalculateNeighborIndexes(int32 index) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_CalcNeighbor);
 
@@ -705,6 +725,188 @@ FNeighbors AGrid::calculateNeighborIndexes(int32 index)
 	return Neighbors;
 }
 
+TArray<int32> AGrid::CalculateNeighborIndexesAsArray(int32 index, bool bSquareGridDiagonal) const
+{
+	FNeighbors Neighbors = CalculateNeighborIndexes(index);
+	TArray<int32>  temp;
+
+	if (gridType == EGridType::E_Square && !bSquareGridDiagonal)
+	{
+		if (Neighbors.EAST != -1)
+			temp.Add(Neighbors.EAST);
+		if (Neighbors.WEST != -1)
+			temp.Add(Neighbors.WEST);
+		if (Neighbors.SOUTH != -1)
+			temp.Add(Neighbors.SOUTH);
+		if (Neighbors.NORTH != -1)
+			temp.Add(Neighbors.NORTH);
+		return temp;
+	}
+
+	if (Neighbors.EAST != -1 && gridType == EGridType::E_Square)
+		temp.Add(Neighbors.EAST);
+	if (Neighbors.WEST != -1 && gridType == EGridType::E_Square)
+		temp.Add(Neighbors.WEST);
+	if (Neighbors.SOUTH != -1)
+		temp.Add(Neighbors.SOUTH);
+	if (Neighbors.NORTH != -1)
+		temp.Add(Neighbors.NORTH);
+	if (Neighbors.SOUTHEAST != -1)
+		temp.Add(Neighbors.SOUTHEAST);
+	if (Neighbors.NORTHWEST != -1)
+		temp.Add(Neighbors.NORTHWEST);
+	if (Neighbors.SOUTHWEST != -1)
+		temp.Add(Neighbors.SOUTHWEST);
+	if (Neighbors.NORTHEAST != -1)
+		temp.Add(Neighbors.NORTHEAST);
+
+	return temp;
+}
+
+int32 AGrid::GetNeighborIndex(int32 index, ENeighborDirection Direction, ESearchType SearchType)
+{
+	FNeighbors Neighbors = CalculateNeighborIndexes(index);
+	switch (Direction)
+	{
+	case ENeighborDirection::None:
+		return -1;
+	case ENeighborDirection::NORTH:
+		if (SearchType == ESearchType::Ground)
+		{
+			if (GetTileByIndex(Neighbors.NORTH).NodeProperty.TileType == ETileType::Grass)
+				return Neighbors.NORTH;
+		}
+		else if (SearchType == ESearchType::Water)
+		{
+			if (GetTileByIndex(Neighbors.NORTH).NodeProperty.TileType == ETileType::Water)
+				return Neighbors.NORTH;
+		}
+		else if (SearchType == ESearchType::Fly)
+		{
+			return Neighbors.NORTH;
+		}
+		return -1;
+	case ENeighborDirection::NORTH_EAST:
+		if (SearchType == ESearchType::Ground)
+		{
+			if (GetTileByIndex(Neighbors.NORTHEAST).NodeProperty.TileType == ETileType::Grass)
+				return Neighbors.NORTHEAST;
+		}
+		else if (SearchType == ESearchType::Water)
+		{
+			if (GetTileByIndex(Neighbors.NORTHEAST).NodeProperty.TileType == ETileType::Water)
+				return Neighbors.NORTHEAST;
+		}
+		else if (SearchType == ESearchType::Fly)
+		{
+			return Neighbors.NORTHEAST;
+		}
+		return -1;
+	case ENeighborDirection::EAST:
+		if (gridType == EGridType::E_Hex)
+			return -1;
+		if (SearchType == ESearchType::Ground)
+		{
+			if (GetTileByIndex(Neighbors.EAST).NodeProperty.TileType == ETileType::Grass)
+				return Neighbors.EAST;
+		}
+		else if (SearchType == ESearchType::Water)
+		{
+			if (GetTileByIndex(Neighbors.EAST).NodeProperty.TileType == ETileType::Water)
+				return Neighbors.EAST;
+		}
+		else if (SearchType == ESearchType::Fly)
+		{
+			return Neighbors.EAST;
+		}
+		return -1;
+	case ENeighborDirection::SOUTH_EAST:
+		if (SearchType == ESearchType::Ground)
+		{
+			if (GetTileByIndex(Neighbors.SOUTHEAST).NodeProperty.TileType == ETileType::Grass)
+				return Neighbors.SOUTHEAST;
+		}
+		else if (SearchType == ESearchType::Water)
+		{
+			if (GetTileByIndex(Neighbors.SOUTHEAST).NodeProperty.TileType == ETileType::Water)
+				return Neighbors.SOUTHEAST;
+		}
+		else if (SearchType == ESearchType::Fly)
+		{
+			return Neighbors.SOUTHEAST;
+		}
+		return -1;
+	case ENeighborDirection::SOUTH:
+		if (SearchType == ESearchType::Ground)
+		{
+			if (GetTileByIndex(Neighbors.SOUTH).NodeProperty.TileType == ETileType::Grass)
+				return Neighbors.SOUTH;
+		}
+		else if (SearchType == ESearchType::Water)
+		{
+			if (GetTileByIndex(Neighbors.SOUTH).NodeProperty.TileType == ETileType::Water)
+				return Neighbors.SOUTH;
+		}
+		else if (SearchType == ESearchType::Fly)
+		{
+			return Neighbors.SOUTH;
+		}
+		return -1;
+	case ENeighborDirection::SOUTH_WEST:
+		if (SearchType == ESearchType::Ground)
+		{
+			if (GetTileByIndex(Neighbors.SOUTHWEST).NodeProperty.TileType == ETileType::Grass)
+				return Neighbors.SOUTHWEST;
+		}
+		else if (SearchType == ESearchType::Water)
+		{
+			if (GetTileByIndex(Neighbors.SOUTHWEST).NodeProperty.TileType == ETileType::Water)
+				return Neighbors.SOUTHWEST;
+		}
+		else if (SearchType == ESearchType::Fly)
+		{
+			return Neighbors.SOUTHWEST;
+		}
+		return -1;
+	case ENeighborDirection::WEST:
+		if (gridType == EGridType::E_Hex)
+			return -1;
+		if (SearchType == ESearchType::Ground)
+		{
+			if (GetTileByIndex(Neighbors.NORTH).NodeProperty.TileType == ETileType::Grass)
+				return Neighbors.WEST;
+		}
+		else if (SearchType == ESearchType::Water)
+		{
+			if (GetTileByIndex(Neighbors.WEST).NodeProperty.TileType == ETileType::Water)
+				return Neighbors.WEST;
+		}
+		else if (SearchType == ESearchType::Fly)
+		{
+			return Neighbors.WEST;
+		}
+		return -1;
+	case ENeighborDirection::NORTH_WEST:
+		if (SearchType == ESearchType::Ground)
+		{
+			if (GetTileByIndex(Neighbors.NORTHWEST).NodeProperty.TileType == ETileType::Grass)
+				return Neighbors.NORTHWEST;
+		}
+		else if (SearchType == ESearchType::Water)
+		{
+			if (GetTileByIndex(Neighbors.NORTHWEST).NodeProperty.TileType == ETileType::Water)
+				return Neighbors.NORTHWEST;
+		}
+		else if (SearchType == ESearchType::Fly)
+		{
+			return Neighbors.NORTHWEST;
+		}
+		return -1;
+	}
+
+	return -1;
+}
+
 /**
 *			+---+---+---+
 *			| NW| N | NE|
@@ -714,14 +916,15 @@ FNeighbors AGrid::calculateNeighborIndexes(int32 index)
 *			| SW| S | SE|
 *			+---+---+---+
 *	EAST and WEST SQUARE Grid Only
+*   To Do: Change return val to struct. Return obstacle indices.
 */
-FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Preferences, ESearchType SearchType)
+FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Preferences, ESearchType SearchType) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_GetNeighborIndexes);
 
 	FTileNeighborResult Result;
-	FNeighbors Neighbors = calculateNeighborIndexes(index);
-	if (SearchType == ESearchType::Fly)
+	FNeighbors Neighbors = CalculateNeighborIndexes(index);
+	/*if (SearchType == ESearchType::Fly)
 	{
 		if (gridType == EGridType::E_Square && !Preferences.bDiagonal)
 		{
@@ -740,7 +943,7 @@ FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pre
 			Result.Neighbors = Neighbors.GetAllNodes();
 			return Result;
 		}
-	}
+	}*/
 
 	//TBitArray<FDefaultBitArrayAllocator> DiagonalBranch;
 	//DiagonalBranch.Init(gridType == EGridType::E_Hex || Preferences.bDiagonal ? true : false, 8);
@@ -884,13 +1087,65 @@ FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pre
 	return Result;
 }
 
+FNodeProperty AGrid::NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, FAStarPreferences Preferences, ESearchType SearchType, ENeighborDirection Direction) const
+{
+	SCOPE_CYCLE_COUNTER(STAT_AccessNode);
+
+	//FNodeProperty result;
+	//result.bAccess = true;
+	//result.NodeCost = Node.NodeProperty.NodeCost;
+
+	FGridNode Node = Instances[NeighborIndex];
+
+	if (Preferences.TileIndexesToFilter.Contains(NeighborIndex))
+	{
+		return FNodeProperty(false, Node.NodeProperty.NodeCost, Node.NodeProperty.TileType);
+	}
+
+	if (SearchType != ESearchType::Fly)
+	{
+		switch (Node.NodeProperty.TileType)
+		{
+		case ETileType::Grass:
+			if (SearchType == ESearchType::Water)
+			{
+				return FNodeProperty(false, Node.NodeProperty.NodeCost, Node.NodeProperty.TileType);
+			}
+			break;
+		case ETileType::Water:
+			if (SearchType == ESearchType::Ground)
+			{
+				return FNodeProperty(false, Node.NodeProperty.NodeCost, Node.NodeProperty.TileType);
+			}
+			break;
+		}
+	}
+
+	if (Preferences.bIgnorePlayerCharacters)
+	{
+		
+	}
+	return Instances[NeighborIndex].NodeProperty;
+}
+
+FNodeProperty AGrid::NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, FAStarPreferences Preferences, ESearchType SearchType, ENeighborDirection Direction) const
+{
+	SCOPE_CYCLE_COUNTER(STAT_AccessNodeBlueprint);
+
+	FNodeProperty result;
+	result.bAccess = true;
+	result.NodeCost = 1.0f;
+
+	return result;
+}
+
 ENeighborDirection AGrid::GetNodeDirection(int32 CurrentIndex, int32 NextIndex)
 {
 	SCOPE_CYCLE_COUNTER(STAT_GetNodeDirection);
 
 	ENeighborDirection Direction = ENeighborDirection::None;
 
-	FNeighbors Neighbors = calculateNeighborIndexes(CurrentIndex);
+	FNeighbors Neighbors = CalculateNeighborIndexes(CurrentIndex);
 
 	if (Neighbors.EAST == NextIndex)
 		Direction = ENeighborDirection::EAST;
@@ -912,26 +1167,45 @@ ENeighborDirection AGrid::GetNodeDirection(int32 CurrentIndex, int32 NextIndex)
 	return Direction;
 }
 
-FNodeProperty AGrid::NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, FAStarPreferences Preferences, ESearchType SearchType, ENeighborDirection Direction)
+bool AGrid::SetTileProperty(int32 index, FNodeProperty Property)
 {
-	SCOPE_CYCLE_COUNTER(STAT_AccessNode);
+	if (!Instances.Contains(index))
+		return false;
 
-	//FNodeProperty result;
-	//result.bAccess = true;
-	//result.NodeCost = Node.NodeProperty.NodeCost;
-
-	return Instances[NeighborIndex].NodeProperty;
+	Instances[index].NodeProperty = Property;
+	return true;
 }
 
-FNodeProperty AGrid::NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, FAStarPreferences Preferences, ESearchType SearchType, ENeighborDirection Direction)
+bool AGrid::SetTilePropertyMap(TMap<int32, FNodeProperty> NodeProperties)
 {
-	SCOPE_CYCLE_COUNTER(STAT_AccessNodeBlueprint);
+	if (NodeProperties.Num() == 0)
+		return false;
+	for (const auto& Node : NodeProperties)
+	{
+		if (Instances.Contains(Node.Key))
+		{
+			Instances[Node.Key].NodeProperty = Node.Value;
+		}
+	}
+	return true;
+}
 
-	FNodeProperty result;
-	result.bAccess = true;
-	result.NodeCost = 1.0f;
+void AGrid::RegisterActorToTile(int32 index, AActor* Actor)
+{
+	if (index < 0 || index > TotalGridSize || !Actor)
+		return;
 
-	return result;
+	Instances[index].NodeProperty.bAccess = false;
+	Instances[index].Actor = Actor;
+}
+
+void AGrid::UnregisterActorFromTile(int32 index)
+{
+	if (index < 0 || index > TotalGridSize)
+		return;
+
+	Instances[index].NodeProperty.bAccess = true;
+	Instances[index].Actor = nullptr;
 }
 
 TArray<int32> AGrid::GetInstancesOverlappingBox(const FBox& Box) const
@@ -1016,47 +1290,6 @@ int32 AGrid::GetGridSize() const
 void AGrid::ClearInstances()
 {
 	Instances.Empty();
-}
-
-bool AGrid::SetTileProperty(int32 index, FNodeProperty Property)
-{
-	if (!Instances.Contains(index))
-		return false;
-
-	Instances[index].NodeProperty = Property;
-	return true;
-}
-
-bool AGrid::SetTilePropertyMap(TMap<int32, FNodeProperty> NodeProperties)
-{
-	if (NodeProperties.Num() == 0)
-		return false;
-	for (const auto& Node : NodeProperties)
-	{
-		if (Instances.Contains(Node.Key))
-		{
-			Instances[Node.Key].NodeProperty = Node.Value;
-		}
-	}
-	return true;
-}
-
-void AGrid::RegisterActorToTile(int32 index, AActor* Actor)
-{
-	if (index < 0 || index > TotalGridSize || !Actor)
-		return;
-
-	Instances[index].NodeProperty.bAccess = false;
-	Instances[index].Actor = Actor;
-}
-
-void AGrid::UnregisterActorFromTile(int32 index)
-{
-	if (index < 0 || index > TotalGridSize)
-		return;
-
-	Instances[index].NodeProperty.bAccess = true;
-	Instances[index].Actor = nullptr;
 }
 
 FBox AGrid::GetTileBound() const
