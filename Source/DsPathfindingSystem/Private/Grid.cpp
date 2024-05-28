@@ -103,31 +103,31 @@ void AGrid::GenerateGrid(EGridType Type, int32 InGridX, int32 InGridY, TMap<int3
 	}
 }
 
-TArray<int32> AGrid::GetTileIndexWithSphere(FVector Center, float Radius)
+TArray<int32> AGrid::GetTileIndexWithSphere(FVector Center, float Radius) const
 {
 	return GetInstancesOverlappingSphere(Center, Radius);
 }
 
-TArray<int32> AGrid::GetTileIndicesWithBox(FVector Center, FVector Extent)
+TArray<int32> AGrid::GetTileIndicesWithBox(FVector Center, FVector Extent) const
 {
 	FBox Box;
 	Box.BuildAABB(Center, Extent);
 	return GetInstancesOverlappingBox(Box);
 }
 
-FVector AGrid::GetTileLocation(int32 index)
+FVector AGrid::GetTileLocation(int32 index) const
 {
 	return GetTile(index).Location;
 }
 
-FBox AGrid::GetTileBox(int32 index)
+FBox AGrid::GetTileBox(int32 index) const
 {
 	if (index < 0 || index > TotalGridSize)
 		return FBox();
 	return TileBound.MoveTo(GetTile(index).Location);
 }
 
-FGridNode AGrid::GetTileByIndex(int32 index)
+FGridNode AGrid::GetTileByIndex(int32 index) const
 {
 	return GetTile(index);
 }
@@ -204,7 +204,7 @@ FGridNode AGrid::GetTileByIndex(int32 index)
 //	return -BIG_NUMBER;
 //}
 
-FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation, ESearchType SearchType, float NodeCostScale)
+FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation, ESearchType SearchType, float NodeCostScale) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_ASTARSEARCH);
 
@@ -368,7 +368,7 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 	return AStarResult;
 }
 
-FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType, float DefaultNodeCost)
+FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType, float DefaultNodeCost) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_PathSearchAtRange);
 
@@ -541,7 +541,7 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 	return Result;
 }
 
-FSearchResult AGrid::RetracePath(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData)
+FSearchResult AGrid::RetracePath(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_ReTracePath);
 
@@ -763,7 +763,7 @@ TArray<int32> AGrid::CalculateNeighborIndexesAsArray(int32 index, bool bSquareGr
 	return temp;
 }
 
-int32 AGrid::GetNeighborIndex(int32 index, ENeighborDirection Direction, ESearchType SearchType)
+int32 AGrid::GetNeighborIndex(int32 index, ENeighborDirection Direction, ESearchType SearchType) const
 {
 	FNeighbors Neighbors = CalculateNeighborIndexes(index);
 	switch (Direction)
@@ -1102,7 +1102,7 @@ FNodeProperty AGrid::NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, FASta
 		return FNodeProperty(false, Node.NodeProperty.NodeCost, Node.NodeProperty.TileType);
 	}
 
-	if (SearchType != ESearchType::Fly)
+	if (SearchType != ESearchType::Fly && !Preferences.IgnoreTileType)
 	{
 		switch (Node.NodeProperty.TileType)
 		{
@@ -1125,7 +1125,11 @@ FNodeProperty AGrid::NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, FASta
 	{
 		
 	}
-	return Instances[NeighborIndex].NodeProperty;
+
+	if (Preferences.IgnoreTileObstackle && !Node.NodeProperty.bAccess)
+		return FNodeProperty(true, Node.NodeProperty.NodeCost, Node.NodeProperty.TileType);
+		
+	return Node.NodeProperty;
 }
 
 FNodeProperty AGrid::NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, int32 NeighborIndex, FAStarPreferences Preferences, ESearchType SearchType, ENeighborDirection Direction) const
@@ -1139,7 +1143,7 @@ FNodeProperty AGrid::NodeBehaviorBlueprint_Implementation(int32 CurrentIndex, in
 	return result;
 }
 
-ENeighborDirection AGrid::GetNodeDirection(int32 CurrentIndex, int32 NextIndex)
+ENeighborDirection AGrid::GetNodeDirection(int32 CurrentIndex, int32 NextIndex) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_GetNodeDirection);
 
