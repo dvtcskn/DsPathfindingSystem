@@ -426,18 +426,37 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
 	FSearchResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false, ESearchType SearchType = ESearchType::Ground, float NodeCostScale = 1000.0f);
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar")
+	inline FSearchResult AStarSearch_Pure(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false, ESearchType SearchType = ESearchType::Ground, float NodeCostScale = 1000.0f)
+	{
+		return AStarSearch(startIndex, endIndex, Preferences, bStopAtNeighborLocation, SearchType, NodeCostScale);
+	}
+
 	/*
 	* Finds all accessible nodes at range
 	* For accurate pathfinding (e.g follow road) you need to set default terrain cost value
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
 	FSearchResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType = ESearchType::Ground, float DefaultNodeCost = 1.0f);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar")
+	inline FSearchResult PathSearchAtRange_Pure(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType = ESearchType::Ground, float DefaultNodeCost = 1.0f)
+	{
+		return PathSearchAtRange(startIndex, atRange, Preferences, SearchType, DefaultNodeCost);
+	}
+
 	/*
 	* For PathSearchAtRange function reconstructing paths
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar", meta = (AutoCreateRefTerm = "NeighborIndexesToFilter"))
 	FSearchResult RetracePath(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData);
 	
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar", meta = (AutoCreateRefTerm = "NeighborIndexesToFilter"))
+	inline FSearchResult RetracePath_Pure(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData)
+	{
+		return RetracePath(startIndex, endIndex, bStopAtNeighborLocation, NeighborIndexesToFilter, StructData);
+	}
+
 	/*
 	* Get Node locations from grid using sphere selection
 	* UHierarchicalInstancedStaticMeshComponent::GetInstancesOverlappingSphere()
