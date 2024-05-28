@@ -103,108 +103,7 @@ void AGrid::GenerateGrid(EGridType Type, int32 InGridX, int32 InGridY, TMap<int3
 	}
 }
 
-TArray<int32> AGrid::GetTileIndexWithSphere(FVector Center, float Radius) const
-{
-	return GetInstancesOverlappingSphere(Center, Radius);
-}
-
-TArray<int32> AGrid::GetTileIndicesWithBox(FVector Center, FVector Extent) const
-{
-	FBox Box;
-	Box.BuildAABB(Center, Extent);
-	return GetInstancesOverlappingBox(Box);
-}
-
-FVector AGrid::GetTileLocation(int32 index) const
-{
-	return GetTile(index).Location;
-}
-
-FBox AGrid::GetTileBox(int32 index) const
-{
-	if (index < 0 || index > TotalGridSize)
-		return FBox();
-	return TileBound.MoveTo(GetTile(index).Location);
-}
-
-FGridNode AGrid::GetTileByIndex(int32 index) const
-{
-	return GetTile(index);
-}
-
-//int32 AGrid::getNodeIndex(FVector targetVector)
-//{
-//	SCOPE_CYCLE_COUNTER(STAT_GetNodeIndex);
-//
-//	/*UWorld* World	= GetWorld();
-//	int32 out		= NULL;
-//	float origin	= hISM->Bounds.Origin.Z;
-//	float boxExtend = hISM->Bounds.BoxExtent.Z;
-//
-//	FVector sVector{ targetVector.X, targetVector.Y, ((boxExtend * 2) * -1.0f) + (origin + boxExtend) };
-//	FVector eVector{ targetVector.X, targetVector.Y, origin + boxExtend };
-//
-//	TArray<FHitResult> traceHitResults;
-//	FCollisionQueryParams traceParams;
-//	traceParams.bTraceComplex = true;
-//
-//	World->LineTraceMultiByObjectType(traceHitResults, sVector, eVector, hISM->GetCollisionObjectType(), traceParams);
-//
-//	for (size_t i = 0; i < traceHitResults.Num(); i++)
-//	{
-//		if (traceHitResults[i].GetActor() != NULL) {
-//			if (traceHitResults[i].GetActor() == this) {
-//				if (traceHitResults[i].Item >= 0) {
-//					out = traceHitResults[i].Item;
-//					break;
-//				}
-//				else {
-//					out = traceHitResults[i].Item + FMath::Abs(32767.0f) + 32769.0f;
-//					break;
-//				}
-//			}
-//		}
-//	}
-//	if (out <= ((GridX * GridY) - 1) && out >= 0)
-//	{
-//		return out;
-//	}
-//	else {
-//		return -1;
-//	}*/
-//
-//	return -1;
-//}
-
-//float AGrid::getActorZ(AActor* Actor, FVector Location, ECollisionChannel TraceType)
-//{
-//	float Z = -BIG_NUMBER;
-//	if (UWorld* world = GetWorld()) {
-//		TArray<FHitResult> traceHitResults;
-//		if (Actor) {
-//			FVector origin;
-//			FVector boxExtend;
-//			Actor->GetActorBounds(false, origin, boxExtend);
-//			FVector sVector{ Location.X,Location.Y, boxExtend.Z * 2 + Actor->GetActorLocation().Z };
-//			FVector eVector{ Location.X,Location.Y, Actor->GetActorLocation().Z - 1 };
-//			FCollisionQueryParams traceParams;
-//			traceParams.bTraceComplex = true;
-//			world->LineTraceMultiByObjectType(traceHitResults, sVector, eVector, UEngineTypes::ConvertToObjectType(TraceType), traceParams);
-//			for (size_t i = 0; i < traceHitResults.Num(); i++)
-//			{
-//				if (traceHitResults[i].GetActor() == Actor) {
-//					if (traceHitResults[i].Location.Z > Z) {
-//						Z = traceHitResults[i].Location.Z;
-//					}
-//				}
-//			}
-//		}
-//		return Z < 1 && Z > -1 ? 0 : Z;
-//	}
-//	return -BIG_NUMBER;
-//}
-
-FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation, ESearchType SearchType, float NodeCostScale) const
+FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation, ESearchType SearchType, float NodeCostScale)
 {
 	SCOPE_CYCLE_COUNTER(STAT_ASTARSEARCH);
 
@@ -368,7 +267,7 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 	return AStarResult;
 }
 
-FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType, float DefaultNodeCost) const
+FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType, float DefaultNodeCost)
 {
 	SCOPE_CYCLE_COUNTER(STAT_PathSearchAtRange);
 
@@ -541,7 +440,7 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 	return Result;
 }
 
-FSearchResult AGrid::RetracePath(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData) const
+FSearchResult AGrid::RetracePath(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData)
 {
 	SCOPE_CYCLE_COUNTER(STAT_ReTracePath);
 
@@ -1170,6 +1069,107 @@ ENeighborDirection AGrid::GetNodeDirection(int32 CurrentIndex, int32 NextIndex) 
 
 	return Direction;
 }
+
+TArray<int32> AGrid::GetTileIndexWithSphere(FVector Center, float Radius) const
+{
+	return GetInstancesOverlappingSphere(Center, Radius);
+}
+
+TArray<int32> AGrid::GetTileIndicesWithBox(FVector Center, FVector Extent) const
+{
+	FBox Box;
+	Box.BuildAABB(Center, Extent);
+	return GetInstancesOverlappingBox(Box);
+}
+
+FVector AGrid::GetTileLocation(int32 index) const
+{
+	return GetTile(index).Location;
+}
+
+FBox AGrid::GetTileBox(int32 index) const
+{
+	if (index < 0 || index > TotalGridSize)
+		return FBox();
+	return TileBound.MoveTo(GetTile(index).Location);
+}
+
+FGridNode AGrid::GetTileByIndex(int32 index) const
+{
+	return GetTile(index);
+}
+
+//int32 AGrid::getNodeIndex(FVector targetVector)
+//{
+//	SCOPE_CYCLE_COUNTER(STAT_GetNodeIndex);
+//
+//	/*UWorld* World	= GetWorld();
+//	int32 out		= NULL;
+//	float origin	= hISM->Bounds.Origin.Z;
+//	float boxExtend = hISM->Bounds.BoxExtent.Z;
+//
+//	FVector sVector{ targetVector.X, targetVector.Y, ((boxExtend * 2) * -1.0f) + (origin + boxExtend) };
+//	FVector eVector{ targetVector.X, targetVector.Y, origin + boxExtend };
+//
+//	TArray<FHitResult> traceHitResults;
+//	FCollisionQueryParams traceParams;
+//	traceParams.bTraceComplex = true;
+//
+//	World->LineTraceMultiByObjectType(traceHitResults, sVector, eVector, hISM->GetCollisionObjectType(), traceParams);
+//
+//	for (size_t i = 0; i < traceHitResults.Num(); i++)
+//	{
+//		if (traceHitResults[i].GetActor() != NULL) {
+//			if (traceHitResults[i].GetActor() == this) {
+//				if (traceHitResults[i].Item >= 0) {
+//					out = traceHitResults[i].Item;
+//					break;
+//				}
+//				else {
+//					out = traceHitResults[i].Item + FMath::Abs(32767.0f) + 32769.0f;
+//					break;
+//				}
+//			}
+//		}
+//	}
+//	if (out <= ((GridX * GridY) - 1) && out >= 0)
+//	{
+//		return out;
+//	}
+//	else {
+//		return -1;
+//	}*/
+//
+//	return -1;
+//}
+
+//float AGrid::getActorZ(AActor* Actor, FVector Location, ECollisionChannel TraceType)
+//{
+//	float Z = -BIG_NUMBER;
+//	if (UWorld* world = GetWorld()) {
+//		TArray<FHitResult> traceHitResults;
+//		if (Actor) {
+//			FVector origin;
+//			FVector boxExtend;
+//			Actor->GetActorBounds(false, origin, boxExtend);
+//			FVector sVector{ Location.X,Location.Y, boxExtend.Z * 2 + Actor->GetActorLocation().Z };
+//			FVector eVector{ Location.X,Location.Y, Actor->GetActorLocation().Z - 1 };
+//			FCollisionQueryParams traceParams;
+//			traceParams.bTraceComplex = true;
+//			world->LineTraceMultiByObjectType(traceHitResults, sVector, eVector, UEngineTypes::ConvertToObjectType(TraceType), traceParams);
+//			for (size_t i = 0; i < traceHitResults.Num(); i++)
+//			{
+//				if (traceHitResults[i].GetActor() == Actor) {
+//					if (traceHitResults[i].Location.Z > Z) {
+//						Z = traceHitResults[i].Location.Z;
+//					}
+//				}
+//			}
+//		}
+//		return Z < 1 && Z > -1 ? 0 : Z;
+//	}
+//	return -BIG_NUMBER;
+//}
 
 bool AGrid::SetTileProperty(int32 index, FNodeProperty Property)
 {
