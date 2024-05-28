@@ -416,6 +416,27 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
 	void GenerateGrid(EGridType Type, int32 InGridX, int32 InGridY, TMap<int32, FNodeProperty> NodeProperties, bool bUseCustomTileBounds, FBox InCustomTileBounds, FVector2D InTileOffset = FVector2D::ZeroVector, FVector2D InTileScale = FVector2D(1.0f, 1.0f), bool bUseCustomGridLocation = false, FVector CustomGridLocation = FVector::ZeroVector);
+
+	/*
+	* Main pathfinding function
+	* For accurate pathfinding (e.g follow road) you need to set NodeCostScale to big number
+	* if terrain cost is 1.0 this can be 1000
+	* if terrain cost is 100.0 this can be 10
+	*/
+	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
+	FSearchResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false, ESearchType SearchType = ESearchType::Ground, float NodeCostScale = 1000.0f);
+
+	/*
+	* Finds all accessible nodes at range
+	* For accurate pathfinding (e.g follow road) you need to set default terrain cost value
+	*/
+	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
+	FSearchResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType = ESearchType::Ground, float DefaultNodeCost = 1.0f);
+	/*
+	* For PathSearchAtRange function reconstructing paths
+	*/
+	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar", meta = (AutoCreateRefTerm = "NeighborIndexesToFilter"))
+	FSearchResult RetracePath(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData);
 	
 	/*
 	* Get Node locations from grid using sphere selection
@@ -450,27 +471,6 @@ public:
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
 	FGridNode GetTileByIndex(int32 index) const;
-
-	/*
-	* Main pathfinding function
-	* For accurate pathfinding (e.g follow road) you need to set NodeCostScale to big number
-	* if terrain cost is 1.0 this can be 1000
-	* if terrain cost is 100.0 this can be 10
-	*/
-	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-	FSearchResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false, ESearchType SearchType = ESearchType::Ground, float NodeCostScale = 1000.0f) const;
-
-	/*
-	* Finds all accessible nodes at range
-	* For accurate pathfinding (e.g follow road) you need to set default terrain cost value
-	*/
-	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-	FSearchResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType = ESearchType::Ground, float DefaultNodeCost = 1.0f) const;
-	/*
-	* For PathSearchAtRange function reconstructing paths
-	*/
-	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar", meta = (AutoCreateRefTerm = "NeighborIndexesToFilter"))
-	FSearchResult RetracePath(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData) const;
 
 	/*
 	* Return neighbor node indexes with given index value without checking is accessible
