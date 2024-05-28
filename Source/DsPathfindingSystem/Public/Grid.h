@@ -280,9 +280,15 @@ struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	int32 PlayerIDToIgnore;
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	TArray<int32> PlayerIDsToIgnore;
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	uint32 bRecordObstacleIndexes : 1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	TArray<int32> TileIndexesToFilter;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	uint32 IgnoreTileType : 1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	uint32 IgnoreTileObstackle : 1;
 	/*
 	* Prototype ONLY
 	* C++ and Blueprint communication is laggy
@@ -296,6 +302,8 @@ struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 		, bIgnorePlayerCharacters(false)
 		, PlayerIDToIgnore(0)
 		, bRecordObstacleIndexes(false)
+		, IgnoreTileType(false)
+		, IgnoreTileObstackle(false)
 		, bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY(false)
 	{}
 };
@@ -415,7 +423,7 @@ public:
 	* BP pure
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-	TArray<int32> GetTileIndexWithSphere(FVector Center, float Radius);
+	TArray<int32> GetTileIndexWithSphere(FVector Center, float Radius) const;
 
 	/*
 	* Get Node locations from grid using box selection
@@ -424,7 +432,7 @@ public:
 	* BP pure
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-	TArray<int32> GetTileIndicesWithBox(FVector Center, FVector Extent);
+	TArray<int32> GetTileIndicesWithBox(FVector Center, FVector Extent) const;
 
 	/*
 	* Get Node location from grid
@@ -432,16 +440,16 @@ public:
 	* BP only (pure)
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-	FVector GetTileLocation(int32 index);
+	FVector GetTileLocation(int32 index) const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-	FBox GetTileBox(int32 index);
+	FBox GetTileBox(int32 index) const;
 
 	/* 
 	* BP only (pure)
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-	FGridNode GetTileByIndex(int32 index);
+	FGridNode GetTileByIndex(int32 index) const;
 
 	/*
 	* Main pathfinding function
@@ -450,19 +458,19 @@ public:
 	* if terrain cost is 100.0 this can be 10
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-	FSearchResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false, ESearchType SearchType = ESearchType::Ground, float NodeCostScale = 1000.0f);
+	FSearchResult AStarSearch(int32 startIndex, int32 endIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false, ESearchType SearchType = ESearchType::Ground, float NodeCostScale = 1000.0f) const;
 
 	/*
 	* Finds all accessible nodes at range
 	* For accurate pathfinding (e.g follow road) you need to set default terrain cost value
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-	FSearchResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType = ESearchType::Ground, float DefaultNodeCost = 1.0f);
+	FSearchResult PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPreferences Preferences, ESearchType SearchType = ESearchType::Ground, float DefaultNodeCost = 1.0f) const;
 	/*
 	* For PathSearchAtRange function reconstructing paths
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar", meta = (AutoCreateRefTerm = "NeighborIndexesToFilter"))
-	FSearchResult RetracePath(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData);
+	FSearchResult RetracePath(int32 startIndex, int32 endIndex, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter, FSearchResult StructData) const;
 
 	/*
 	* Return neighbor node indexes with given index value without checking is accessible
@@ -474,7 +482,7 @@ public:
 	TArray<int32> CalculateNeighborIndexesAsArray(int32 index, bool bSquareGridDiagonal = false) const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
-	int32 GetNeighborIndex(int32 index, ENeighborDirection Direction, ESearchType SearchType = ESearchType::Ground);
+	int32 GetNeighborIndex(int32 index, ENeighborDirection Direction, ESearchType SearchType = ESearchType::Ground) const;
 
 	/*
 	* Return neighbor node indexes with given index value
@@ -515,7 +523,7 @@ public:
 	* returns neighbor node direction according to CurrentIndex
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar")
-	ENeighborDirection GetNodeDirection(int32 CurrentIndex, int32 NextIndex);
+	ENeighborDirection GetNodeDirection(int32 CurrentIndex, int32 NextIndex) const;
 
 	/*
 	* Finds node index with LineTraceMultiByObjectType()
