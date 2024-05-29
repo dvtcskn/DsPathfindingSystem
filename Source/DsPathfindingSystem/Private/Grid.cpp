@@ -315,6 +315,7 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 
 	bool loop = true;
 	bool pass = false;
+	bool wayout = false;
 
 	//int32 failedAttemptCounter = 0;
 
@@ -322,6 +323,7 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 	{
 		loop = false;
 		pass = false;
+		wayout = false;
 		FTileNeighborResult NeighborIndexes_Pass1;
 		if (closedSet.Num() == 0)
 		{
@@ -387,6 +389,7 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 						pass = true;
 						if (NodeFragment.NodeCostCount <= (Preferences.bOverrideNodeCostToOne || bFly ? atRange : atRange * DefaultNodeCost))
 						{
+							wayout = true;
 							NodeFragment.parentCount = Node.FindOrAdd(NodeFragment.parent).parentCount + 1;
 							openSet.FindOrAdd(loc.Key) = (loc.Key, NodeCost);
 							FinalSet.FindOrAdd(loc.Key) = (loc.Key, NodeCost);
@@ -402,6 +405,9 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 		closedSet.Empty();
 		closedSet = FinalSet;
 		FinalSet.Empty();
+
+		if (!wayout)
+			break;
 
 		//failedAttemptCounter++;
 		//if (failedAttemptCounter >= (GridX * GridY))
