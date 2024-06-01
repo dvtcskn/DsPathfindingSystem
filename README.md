@@ -7,7 +7,7 @@ Features:
 * Hexagon and square grid support
 * Grid based point to point pathfinding system (A*)
 * Grid based search paths in range
-* Diagonal
+* Diagonal (Optional)
 * Blueprint support
 * PathFollowingComponent and AIController for grid movement
 * Runtime
