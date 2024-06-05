@@ -169,7 +169,7 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 
 	FSearchResult			AStarResult;
 	TMap<int32, FANode>		GridGraph;
-	FNeighbors				stopAtNeighbor;
+	TArray<int32>			stopAtNeighbor;
 
 	TArray<int32> ObstacleIndexes;
 
@@ -189,7 +189,7 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 
 	fCostHeap.Heapify(Predicate);
 
-	if (startIndex < 0 || endIndex < 0 || startIndex > TotalGridSize || endIndex > TotalGridSize || !NodeBehavior(-1, endIndex, Preferences, SearchType).bAccess)
+	if (startIndex < 0 || endIndex < 0 || startIndex > TotalGridSize || endIndex > TotalGridSize || (!bStopAtNeighborLocation && !NodeBehavior(-1, endIndex, Preferences, SearchType).bAccess))
 		return AStarResult;
 
 	if (startIndex == endIndex) {
@@ -198,7 +198,7 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 	}
 
 	if (bStopAtNeighborLocation)
-		stopAtNeighbor = CalculateNeighborIndexes(endIndex);
+		stopAtNeighbor = CalculateNeighborIndexesAsArray(endIndex, Preferences.bDiagonal);
 
 	while (fCostHeap.Num() != 0) 
 	{
@@ -402,6 +402,7 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 				}
 			}
 		}
+		
 		closedSet.Empty();
 		closedSet = FinalSet;
 		FinalSet.Empty();
