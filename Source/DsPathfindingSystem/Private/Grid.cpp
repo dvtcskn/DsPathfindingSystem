@@ -107,8 +107,31 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 {
 	SCOPE_CYCLE_COUNTER(STAT_ASTARSEARCH);
 
-	if (startIndex == endIndex || (GridX * GridY) == 0)
+	if ((GridX * GridY) == 0)
 		return FSearchResult();
+
+	if (startIndex == endIndex)
+	{
+		FSearchResult Result;
+		Result.bIsDiagonal = Preferences.bDiagonal;
+		Result.EndPoint = endIndex;
+		Result.bStopAtNeighborLocation = bStopAtNeighborLocation;
+		Result.ResultState = EAStarResultState::AlreadyAtGoal;
+		return Result;
+	}
+	else if (bStopAtNeighborLocation)
+	{
+		auto stopAtNeighbor = CalculateNeighborIndexesAsArray(endIndex, Preferences.bDiagonal);
+		if (stopAtNeighbor.Contains(startIndex))
+		{
+			FSearchResult Result;
+			Result.bIsDiagonal = Preferences.bDiagonal;
+			Result.EndPoint = endIndex;
+			Result.bStopAtNeighborLocation = bStopAtNeighborLocation;
+			Result.ResultState = EAStarResultState::AlreadyAtGoal;
+			return Result;
+		}
+	}
 
 	// No need to create this outside of the function. No one should use this.
 	struct FANode
@@ -136,6 +159,10 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 		{
 			int32 current = end;
 			FSearchResult Result;
+
+			Result.bIsDiagonal = Preferences.bDiagonal;
+			Result.EndPoint = endIndex;
+			Result.bStopAtNeighborLocation = bStopAtNeighborLocation;
 
 			while (current != start)
 			{
@@ -165,7 +192,7 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 			return Result;
 		};
 
-	const bool bFly = SearchType == ESearchType::Fly;
+	//const bool bFly = SearchType == ESearchType::Fly;
 
 	FSearchResult			AStarResult;
 	TMap<int32, FANode>		GridGraph;
@@ -174,6 +201,8 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 	TArray<int32> ObstacleIndexes;
 
 	AStarResult.bIsDiagonal = Preferences.bDiagonal;
+	AStarResult.EndPoint = endIndex;
+	AStarResult.bStopAtNeighborLocation = bStopAtNeighborLocation;
 
 	if (NodeCostScale < 1.0f)
 		NodeCostScale = 1.0f;
@@ -232,16 +261,16 @@ FSearchResult AGrid::AStarSearch(int32 startIndex, int32 endIndex, FAStarPrefere
 
 			if (!NextNode.Closed)
 			{
-				float TraversalCost = (CurrentNode.TraversalCost + FIOctileDistance(Instances[CurrentIndex].Location, Instances[Tile.Key].Location)) + (bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : (Tile.Value * NodeCostScale));
+				float TraversalCost = (CurrentNode.TraversalCost + FIOctileDistance(Instances[CurrentIndex].Location, Instances[Tile.Key].Location)) + (Preferences.bOverrideNodeCostToOne ? 1.0f : ((Tile.Value.NodeCost * Tile.Value.NodeCostScale) * NodeCostScale));
 
 				auto PredicateIndex = [&](const FANode fCostH) {return fCostH.OpenSetIndex == Tile.Key; };
 
 				if (TraversalCost < NextNode.TraversalCost || !fCostHeap.ContainsByPredicate(PredicateIndex))
 				{
-					NextNode.NodeCost = bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value;
+					NextNode.NodeCost = Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value.NodeCost;
 					NextNode.TraversalCost = TraversalCost;
 					NextNode.parent = CurrentIndex;
-					NextNode.NodeCostCount = CurrentNode.NodeCostCount + bFly || Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value;
+					NextNode.NodeCostCount = CurrentNode.NodeCostCount + (Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value.NodeCost);
 					NextNode.parentCount = CurrentNode.parentCount + 1;
 					NextNode.OpenSetIndex = Tile.Key;
 					NextNode.HeuristicCost = FIOctileDistance(Instances[Tile.Key].Location, Instances[endIndex].Location);	// NodePredicate
@@ -302,11 +331,11 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 	if (DefaultNodeCost < 1.0f)
 		DefaultNodeCost = 1.0f;
 
-	const bool bFly = SearchType == ESearchType::Fly;
+	//const bool bFly = SearchType == ESearchType::Fly;
 
-	TMap<int32, float> closedSet;
-	TMap<int32, float> openSet;
-	TMap<int32, float> FinalSet;
+	TMap<int32, FTileNeighborCost> closedSet;
+	TMap<int32, FTileNeighborCost> openSet;
+	TMap<int32, FTileNeighborCost> FinalSet;
 	TMap<int32, FANode>	Node;
 
 	TArray<int32> ObstacleIndexes;
@@ -373,21 +402,22 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 
 					auto& NodeFragment = Node.FindOrAdd(loc.Key);
 
-					float NodeCost = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ?
-						NodeBehaviorBlueprint(inx.Key, loc.Key, Preferences, SearchType, GetNodeDirection(closedSet.Num() == 0 ? startIndex : inx.Key, loc.Key)).NodeCost
-						: NodeBehavior(inx.Key, loc.Key, Preferences, SearchType, GetNodeDirection(closedSet.Num() == 0 ? startIndex : inx.Key, loc.Key)).NodeCost;
+					float NodeCost = loc.Value.NodeCost;
+					//float NodeCost = Preferences.bNodeBehavior_BlueprintOverride_PROTOTYPE_ONLY ?
+					//	NodeBehaviorBlueprint(inx.Key, loc.Key, Preferences, SearchType, GetNodeDirection(closedSet.Num() == 0 ? startIndex : inx.Key, loc.Key)).NodeCost
+					//	: NodeBehavior(inx.Key, loc.Key, Preferences, SearchType, GetNodeDirection(closedSet.Num() == 0 ? startIndex : inx.Key, loc.Key)).NodeCost;
 					NodeFragment.NodeCost = NodeCost;
 
-					float tentativeCost = Node.FindOrAdd(inx.Key).NodeCostCount + NodeFragment.NodeCost;
+					float tentativeCost = Node.FindOrAdd(inx.Key).NodeCostCount + (NodeFragment.NodeCost * loc.Value.NodeCostScale);
 
 					if (tentativeCost < NodeFragment.NodeCostCount || !openSet.Contains(loc.Key))
 					{
 						NodeFragment.parent = closedSet.Num() == 0 ? startIndex : inx.Key;
-						NodeFragment.NodeCostCount = Preferences.bOverrideNodeCostToOne || bFly ? Node.FindOrAdd(NodeFragment.parent).NodeCostCount + 1
-							: NodeCost + Node.FindOrAdd(NodeFragment.parent).NodeCostCount;
+						NodeFragment.NodeCostCount = Preferences.bOverrideNodeCostToOne ? Node.FindOrAdd(NodeFragment.parent).NodeCostCount + 1
+							: (NodeCost * loc.Value.NodeCostScale) + Node.FindOrAdd(NodeFragment.parent).NodeCostCount;
 						loop = true;
 						pass = true;
-						if (NodeFragment.NodeCostCount <= (Preferences.bOverrideNodeCostToOne || bFly ? atRange : atRange * DefaultNodeCost))
+						if (NodeFragment.NodeCostCount <= (Preferences.bOverrideNodeCostToOne ? atRange : atRange * DefaultNodeCost))
 						{
 							wayout = true;
 							NodeFragment.parentCount = Node.FindOrAdd(NodeFragment.parent).parentCount + 1;
@@ -432,7 +462,7 @@ FSearchResult AGrid::PathSearchAtRange(int32 startIndex, int32 atRange, FAStarPr
 			Result.PathResults.Add(Instances[inx.Key].Location);
 			Result.Parents.Add(inx.Key, Node[inx.Key].parent);
 			Result.PathIndexes.Add(inx.Key);
-			Result.PathCosts.Add(inx.Key, inx.Value);
+			Result.PathCosts.Add(inx.Key, inx.Value.NodeCost);
 		}
 	}
 
@@ -457,9 +487,28 @@ FSearchResult AGrid::RetracePath(int32 startIndex, int32 endIndex, bool bStopAtN
 		AResult.ResultState = EAStarResultState::SearchFail;
 		return AResult;
 	}
-	if (startIndex == endIndex) {
-		AResult.ResultState = EAStarResultState::SearchSuccess;
-		return AResult;
+
+	if (startIndex == endIndex)
+	{
+		FSearchResult Result;
+		Result.bIsDiagonal = StructData.bIsDiagonal;
+		Result.EndPoint = endIndex;
+		Result.bStopAtNeighborLocation = bStopAtNeighborLocation;
+		Result.ResultState = EAStarResultState::AlreadyAtGoal;
+		return Result;
+	}
+	else if (bStopAtNeighborLocation)
+	{
+		auto stopAtNeighbor = CalculateNeighborIndexesAsArray(endIndex, StructData.bIsDiagonal);
+		if (stopAtNeighbor.Contains(startIndex))
+		{
+			FSearchResult Result;
+			Result.bIsDiagonal = StructData.bIsDiagonal;
+			Result.EndPoint = endIndex;
+			Result.bStopAtNeighborLocation = bStopAtNeighborLocation;
+			Result.ResultState = EAStarResultState::AlreadyAtGoal;
+			return Result;
+		}
 	}
 
 	auto Retrace = [&](const int32 startIndex, const int32 endIndex, const FSearchResult& StructData) -> FSearchResult
@@ -468,6 +517,9 @@ FSearchResult AGrid::RetracePath(int32 startIndex, int32 endIndex, bool bStopAtN
 			SearchResult.bIsDiagonal = StructData.bIsDiagonal;
 			int32 currentIndex = endIndex;
 			int32 debugCount = NULL;
+
+			SearchResult.EndPoint = endIndex;
+			SearchResult.bStopAtNeighborLocation = bStopAtNeighborLocation;
 
 			while (currentIndex != startIndex)
 			{
@@ -862,7 +914,7 @@ FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pre
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[0] = true;
-			Result.Neighbors.Add(Neighbors.EAST, Access.NodeCost);
+			Result.Neighbors.Add(Neighbors.EAST, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 		}
 		else if (Preferences.bRecordObstacleIndexes)
 		{
@@ -875,7 +927,7 @@ FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pre
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[1] = true;
-			Result.Neighbors.Add(Neighbors.WEST, Access.NodeCost);
+			Result.Neighbors.Add(Neighbors.WEST, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 		}
 		else if (Preferences.bRecordObstacleIndexes)
 		{
@@ -888,7 +940,7 @@ FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pre
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[2] = true;
-			Result.Neighbors.Add(Neighbors.SOUTH, Access.NodeCost);
+			Result.Neighbors.Add(Neighbors.SOUTH, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 		}
 		else if (Preferences.bRecordObstacleIndexes)
 		{
@@ -901,7 +953,7 @@ FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pre
 		if (Access.bAccess)
 		{
 			//DiagonalBranch[3] = true;
-			Result.Neighbors.Add(Neighbors.NORTH, Access.NodeCost);
+			Result.Neighbors.Add(Neighbors.NORTH, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 		}
 		else if (Preferences.bRecordObstacleIndexes)
 		{
@@ -917,11 +969,11 @@ FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pre
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
 			{
 				//DiagonalBranch[4] = true;
-				Result.Neighbors.Add(Neighbors.SOUTHEAST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.SOUTHEAST, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 			}
 			else if (gridType == EGridType::E_Hex)
 			{
-				Result.Neighbors.Add(Neighbors.SOUTHEAST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.SOUTHEAST, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 			}
 		}
 		else if (Preferences.bRecordObstacleIndexes)
@@ -937,11 +989,11 @@ FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pre
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
 			{
 				//DiagonalBranch[5] = true;
-				Result.Neighbors.Add(Neighbors.SOUTHWEST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.SOUTHWEST, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 			}
 			else if (gridType == EGridType::E_Hex)
 			{
-				Result.Neighbors.Add(Neighbors.SOUTHWEST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.SOUTHWEST, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 			}
 		}
 		else if (Preferences.bRecordObstacleIndexes)
@@ -957,11 +1009,11 @@ FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pre
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
 			{
 				//DiagonalBranch[6] = true;
-				Result.Neighbors.Add(Neighbors.NORTHWEST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.NORTHWEST, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 			}
 			else if (gridType == EGridType::E_Hex)
 			{
-				Result.Neighbors.Add(Neighbors.NORTHWEST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.NORTHWEST, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 			}
 		}
 		else if (Preferences.bRecordObstacleIndexes)
@@ -977,11 +1029,11 @@ FTileNeighborResult AGrid::GetNeighborIndexes(int32 index, FAStarPreferences Pre
 			if (Preferences.bDiagonal && gridType == EGridType::E_Square)
 			{
 				//DiagonalBranch[7] = true;
-				Result.Neighbors.Add(Neighbors.NORTHEAST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.NORTHEAST, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 			}
 			else if (gridType == EGridType::E_Hex)
 			{
-				Result.Neighbors.Add(Neighbors.NORTHEAST, Access.NodeCost);
+				Result.Neighbors.Add(Neighbors.NORTHEAST, FTileNeighborCost(Access.NodeCost, Access.NodeCostScale));
 			}
 		}
 		else if (Preferences.bRecordObstacleIndexes)
@@ -1029,12 +1081,14 @@ FNodeProperty AGrid::NodeBehavior(int32 CurrentIndex, int32 NeighborIndex, FASta
 
 	if (Preferences.bIgnorePlayerCharacters)
 	{
-		
+		if (Preferences.bIncreaseTileCostOfPlayerCharacters)
+			Node.NodeProperty.NodeCostScale = Preferences.TileCostScale;
+		//...
 	}
 
 	if (Preferences.IgnoreTileObstackle && !Node.NodeProperty.bAccess)
-		return FNodeProperty(true, Node.NodeProperty.NodeCost, Node.NodeProperty.TileType);
-		
+		return FNodeProperty(true, SearchType == ESearchType::Fly ? 1.0f : Node.NodeProperty.NodeCost, Node.NodeProperty.TileType);
+
 	return Node.NodeProperty;
 }
 
