@@ -40,6 +40,7 @@ enum class EAStarResultState : uint8
 {
 	SearchFail		UMETA(DisplayName = "Search Fail"),
 	SearchSuccess	UMETA(DisplayName = "Search Success"),
+	AlreadyAtGoal	UMETA(DisplayName = "Already At Goal"),
 	GoalUnreachable	UMETA(DisplayName = "Goal Unreachable"),
 	InfiniteLoop	UMETA(DisplayName = "Infinite Loop")
 };
@@ -104,7 +105,11 @@ struct DSPATHFINDINGSYSTEM_API FSearchResult
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	TArray<int32> ObstacleIndexes;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	int32 EndPoint;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	uint32 bIsDiagonal : 1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	uint32 bStopAtNeighborLocation : 1;
 	/* Search state */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	EAStarResultState ResultState = EAStarResultState::SearchFail;
@@ -112,15 +117,39 @@ struct DSPATHFINDINGSYSTEM_API FSearchResult
 	FSearchResult()
 		: TotalNodeCost(NULL)
 		, PathLength(NULL)
+		, EndPoint(-1)
 		, bIsDiagonal(false)
+		, bStopAtNeighborLocation(false)
 		, ResultState(EAStarResultState::SearchFail)
 	{};
 	FSearchResult(EAStarResultState ResultState)
 		: TotalNodeCost(NULL)
 		, PathLength(NULL)
+		, EndPoint(-1)
 		, bIsDiagonal(false)
+		, bStopAtNeighborLocation(false)
 		, ResultState(ResultState)
 	{};
+};
+
+USTRUCT(BlueprintType)
+struct FTileNeighborCost
+{
+	GENERATED_BODY()
+public:
+	float NodeCost;
+	float NodeCostScale;
+
+	inline float GetCost() { return NodeCost * NodeCostScale; }
+
+	FTileNeighborCost()
+		: NodeCost(1.0f)
+		, NodeCostScale(1.0f)
+	{}
+	FTileNeighborCost(float InNodeCost, float InNodeCostScale = 1.0f)
+		: NodeCost(InNodeCost)
+		, NodeCostScale(InNodeCostScale)
+	{}
 };
 
 /*
@@ -133,7 +162,7 @@ struct DSPATHFINDINGSYSTEM_API FTileNeighborResult
 
 	/* Stores all found nodes locations */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
-	TMap<int32, float> Neighbors;
+	TMap<int32, FTileNeighborCost> Neighbors;
 	/* Stores all found nodes indexes */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	TArray<int32> ObstacleIndexes;
@@ -281,6 +310,16 @@ struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 	int32 PlayerIDToIgnore;
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	TArray<int32> PlayerIDsToIgnore;
+	/*
+	* Only affects search functionality. Not the actual tile cost.
+	*/
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	uint32 bIncreaseTileCostOfPlayerCharacters : 1;
+	/*
+	* Only affects search functionality. Not the actual tile cost.
+	*/
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	float TileCostScale;
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	uint32 bRecordObstacleIndexes : 1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
@@ -301,6 +340,8 @@ struct DSPATHFINDINGSYSTEM_API FAStarPreferences
 		, bOverrideNodeCostToOne(false)
 		, bIgnorePlayerCharacters(false)
 		, PlayerIDToIgnore(0)
+		, bIncreaseTileCostOfPlayerCharacters(false)
+		, TileCostScale(1.0f)
 		, bRecordObstacleIndexes(false)
 		, IgnoreTileType(false)
 		, IgnoreTileObstackle(false)
@@ -331,16 +372,24 @@ struct DSPATHFINDINGSYSTEM_API FNodeProperty
 
 	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
 	ETileType TileType;
+
+	/*
+	* Only affects search functionality. Not the actual tile cost.
+	*/
+	UPROPERTY(BlueprintReadWrite, Category = "DsPathfindingSystem|Structs")
+	float NodeCostScale = 1.0f;
 	
 	FNodeProperty()
 		: bAccess(true)
 		, NodeCost(1.0f)
 		, TileType(ETileType::Grass)
+		, NodeCostScale(1.0f)
 	{}
-	FNodeProperty(uint32 Access, float Cost, ETileType TileType)
+	FNodeProperty(uint32 Access, float Cost, ETileType TileType, float InNodeCostScale = 1.0f)
 		: bAccess(Access)
 		, NodeCost(Cost)
 		, TileType(TileType)
+		, NodeCostScale(InNodeCostScale)
 	{}
 };
 
