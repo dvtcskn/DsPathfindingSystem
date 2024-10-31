@@ -1,7 +1,7 @@
 # DsPathfindingSystem
 ![DsPathfindingSystem_thumb-284x284-c2f4c3b50f372122dbca094128168be9](https://github.com/dvtcskn/DsPathfindingSystem/assets/117200113/519ced4e-c658-43e6-a496-1cc09a3b1acd)
 
-Unreal Engine 5.4 supported. This plugin provides all the basic functionality for grid based pathfinding. Hexagon and square grid is supported. There is blueprint support but the performance is poor. Use blueprint for prototyping only.
+Unreal Engine 4.27/5.4 supported. This plugin provides all the basic functionality for grid based pathfinding. Hexagon and square grid is supported. There is blueprint support but the performance is poor. Use blueprint for prototyping only.
 
 Features:
 * Hexagon and square grid support
