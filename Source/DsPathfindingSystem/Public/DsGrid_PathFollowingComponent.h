@@ -21,7 +21,6 @@ class DSPATHFINDINGSYSTEM_API UDsGrid_PathFollowingComponent : public UPathFollo
 	GENERATED_BODY()
 	
 public:
-
 	UDsGrid_PathFollowingComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	/** start movement along path
@@ -57,7 +56,12 @@ public:
 	/** notify about finishing move along current path segment */
 	virtual void OnSegmentFinished() override;
 
-protected:
+	/** check if move is completed */
+	virtual bool HasReachedDestination(const FVector& CurrentLocation) const override;
 
+	/** check if segment is completed */
+	virtual bool HasReachedCurrentTarget(const FVector& CurrentLocation) const override;
+
+protected:
 	virtual bool DeterminePathStatus();
 };
