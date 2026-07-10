@@ -12,7 +12,7 @@ ADsAIController::ADsAIController(const FObjectInitializer& ObjectInitializer)
 	, bPauseMoveCalled(false)
 {}
 
-EPathFollowingRequestResult::Type ADsAIController::GridBasedMoveToLocation(const TArray<FVector>& Dests, float AcceptanceRadius)
+EPathFollowingRequestResult::Type ADsAIController::GridBasedMoveToLocation(const TArray<FVector>& Dests, const TArray<int32>& Indexes, float AcceptanceRadius)
 {
 	FPathFollowingRequestResult ResultData;
 	ResultData.Code = EPathFollowingRequestResult::Failed;
@@ -27,12 +27,12 @@ EPathFollowingRequestResult::Type ADsAIController::GridBasedMoveToLocation(const
 	}
 
 	FAIMoveRequest MoveReq(Dests[Dests.Num() - 1]);
-	MoveReq.SetUsePathfinding(false);
-	MoveReq.SetAllowPartialPath(false);
-	MoveReq.SetProjectGoalLocation(false);
+	MoveReq.SetUsePathfinding(true);
+	MoveReq.SetAllowPartialPath(true);
+	MoveReq.SetProjectGoalLocation(true);
 	MoveReq.SetNavigationFilter(DefaultNavigationFilterClass);
 	MoveReq.SetAcceptanceRadius(AcceptanceRadius);
-	MoveReq.SetReachTestIncludesAgentRadius(false);
+	MoveReq.SetReachTestIncludesAgentRadius(true);
 	MoveReq.SetCanStrafe(true);
 
 	bPauseMoveCalled = false;
@@ -46,6 +46,8 @@ EPathFollowingRequestResult::Type ADsAIController::GridBasedMoveToLocation(const
 		const FAIRequestID RequestID = Path.IsValid() ? RequestMove(MoveReq, Path) : FAIRequestID::InvalidRequest;
 		if (RequestID.IsValid())
 		{
+			TileIndexes = Indexes;
+
 			bAllowStrafe = MoveReq.CanStrafe();
 			ResultData.MoveId = RequestID;
 			ResultData.Code = EPathFollowingRequestResult::RequestSuccessful;
@@ -53,6 +55,17 @@ EPathFollowingRequestResult::Type ADsAIController::GridBasedMoveToLocation(const
 	}
 
 	return ResultData;
+}
+
+void ADsAIController::AbortMovement()
+{
+	TileIndexes.Empty();
+	StopMovement();
+
+	/*if (GetPathFollowingComponent())
+	{
+		GetPathFollowingComponent()->AbortMove(*this, FPathFollowingResultFlags::Blocked | FPathFollowingResultFlags::ForcedScript);
+	}*/
 }
 
 void ADsAIController::ResumeMovement()
@@ -82,22 +95,37 @@ void ADsAIController::PauseMovement()
 
 void ADsAIController::OnBeginMovement()
 {
+
 }
 
 void ADsAIController::OnResumeMovement()
 {
+
 }
 
 void ADsAIController::OnPauseMovement()
 {
+
 }
 
 void ADsAIController::OnSegmentFinished(int32 InSegmentIndex)
 {
+	if (InSegmentIndex < 0 || InSegmentIndex >= TileIndexes.Num())
+		return;
+
+	const int32 Current = TileIndexes[InSegmentIndex];
+	const int32 Next = InSegmentIndex + 1 < TileIndexes.Num() ? TileIndexes[InSegmentIndex + 1] : -1;
+	OnPathSegmentFinished.Broadcast(Current, Next);
 }
 
-void ADsAIController::OnPathFinished()
+void ADsAIController::OnPathFinished(TEnumAsByte<EPathFollowingResult::Type> Flag)
 {
+	OnPathCompleted.Broadcast(TileIndexes.Num() > 0 ? TileIndexes.Last() : -1, Flag);
+	TileIndexes.Empty();
+	auto Temp = OnGridPathFinished;
+	OnGridPathFinished.Clear();
+	Temp.Broadcast(Cast<AActor>(GetPawn()));
+	Temp.Clear();
 }
 
 bool ADsAIController::IsPathNeedsToPause(int32 InSegmentIndex)

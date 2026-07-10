@@ -64,11 +64,11 @@ UDsGrid_PathFollowingComponent::UDsGrid_PathFollowingComponent(const FObjectInit
 FAIRequestID UDsGrid_PathFollowingComponent::RequestMove(const FAIMoveRequest& RequestData, FNavPathSharedPtr InPath)
 {
 	auto LGetPathDescHelper = [&](FNavPathSharedPtr NavPath) -> FString
-	{
-		return !NavPath.IsValid() ? TEXT("missing") :
-			!NavPath->IsValid() ? TEXT("invalid") :
-			FString::Printf(TEXT("%s:%d"), NavPath->IsPartial() ? TEXT("partial") : TEXT("complete"), NavPath->GetPathPoints().Num());
-	};
+		{
+			return !NavPath.IsValid() ? TEXT("missing") :
+				!NavPath->IsValid() ? TEXT("invalid") :
+				FString::Printf(TEXT("%s:%d"), NavPath->IsPartial() ? TEXT("partial") : TEXT("complete"), NavPath->GetPathPoints().Num());
+		};
 
 	UE_VLOG(GetOwner(), LogPathFollowing, Log, TEXT("RequestMove: Path(%s) %s"), *LGetPathDescHelper(InPath), *RequestData.ToString());
 	LogPathHelper(GetOwner(), InPath, RequestData.GetGoalActor());
@@ -94,16 +94,16 @@ FAIRequestID UDsGrid_PathFollowingComponent::RequestMove(const FAIMoveRequest& R
 	}
 
 	FAIRequestID MoveId = GetCurrentRequestId();
-	
+
 	// Resume previous Path
-	if (Status == EPathFollowingStatus::Paused && Path.IsValid() && CheckPathIsSame(InPath, Path) /*&& DestinationActor == RequestData.GetGoalActor()*/)
+	if (GetStatus() == EPathFollowingStatus::Paused && Path.IsValid() && CheckPathIsSame(InPath, Path) /*&& DestinationActor == RequestData.GetGoalActor()*/)
 	{
 		ResumeMove();
 	}
 	else
 	{
 		// --------------------------------------------- NEW PATH --------------------------------------------------------
-		if (Status != EPathFollowingStatus::Idle)
+		if (GetStatus() != EPathFollowingStatus::Idle)
 		{
 			// setting to false to make sure OnPathFinished won't result in stoping 
 			bStopMovementOnFinish = false;
@@ -124,9 +124,12 @@ FAIRequestID UDsGrid_PathFollowingComponent::RequestMove(const FAIMoveRequest& R
 		Path = InPath;
 
 		Path->AddObserver(FNavigationPath::FPathObserverDelegate::FDelegate::CreateUObject(this, &UPathFollowingComponent::OnPathEvent));
-		if (MovementComp && MovementComp->GetOwner())
+		if (NavMovementInterface.IsValid() && NavMovementInterface->GetOwnerAsObject())
 		{
-			Path->SetSourceActor(*(MovementComp->GetOwner()));
+			if (AActor* OwnerAsActor = Cast<AActor>(NavMovementInterface->GetOwnerAsObject()))
+			{
+				Path->SetSourceActor(*(OwnerAsActor));
+			}
 		}
 
 		OriginalMoveRequestGoalLocation = RequestData.GetGoalActor() ? RequestData.GetGoalActor()->GetActorLocation() : RequestData.GetGoalLocation();
@@ -137,9 +140,11 @@ FAIRequestID UDsGrid_PathFollowingComponent::RequestMove(const FAIMoveRequest& R
 		{
 			bIsUsingMetaPath = true;
 
-			const FVector CurrentLocation = MovementComp ? MovementComp->GetActorFeetLocation() : FAISystem::InvalidLocation;
+			const FVector CurrentLocation = NavMovementInterface.IsValid() ? NavMovementInterface->GetFeetLocation() : FAISystem::InvalidLocation;
 			MetaNavPath->Initialize(CurrentLocation);
 		}
+
+		NavigationFilter = ExtractNavigationFilter(RequestData, Path);
 
 		PathTimeWhenPaused = 0.0f;
 		OnPathUpdated();
@@ -157,15 +162,15 @@ FAIRequestID UDsGrid_PathFollowingComponent::RequestMove(const FAIMoveRequest& R
 			UpdateDecelerationData();
 
 #if ENABLE_VISUAL_LOG
-			const FVector CurrentLocation = MovementComp ? MovementComp->GetActorFeetLocation() : FVector::ZeroVector;
+			const FVector CurrentLocation = NavMovementInterface.IsValid() ? NavMovementInterface->GetFeetLocation() : FVector::ZeroVector;
 			const FVector DestLocation = InPath->GetDestinationLocation();
 			const FVector ToDest = DestLocation - CurrentLocation;
-			UE_VLOG(GetOwner(), LogPathFollowing, Log, TEXT("RequestMove: accepted, ID(%u) dist2D(%.0f) distZ(%.0f)"), MoveId, ToDest.Size2D(), FMath::Abs(ToDest.Z));
+			UE_VLOG(GetOwner(), LogPathFollowing, Log, TEXT("RequestMove: accepted, ID(%u) dist2D(%.0f) distZ(%.0f)"), MoveId.GetID(), ToDest.Size2D(), FMath::Abs(ToDest.Z));
 #endif // ENABLE_VISUAL_LOG
 
 			if (!bIsUsingMetaPath && Path.IsValid() && Path->GetPathPoints().Num() > 0)
 			{
-				Status = EPathFollowingStatus::Moving;
+				SetStatus(EPathFollowingStatus::Moving);
 
 				ADsAIController* AI = Cast<ADsAIController>(GetOwner());
 				if (AI) {
@@ -173,11 +178,14 @@ FAIRequestID UDsGrid_PathFollowingComponent::RequestMove(const FAIMoveRequest& R
 				}
 
 				// determine with path segment should be followed
+				//const uint32 CurrentSegment = DetermineStartingPathPoint(InPath.Get());
+				//SetMoveSegment(CurrentSegment);
+
 				SetMoveSegment(0);
 			}
 			else
 			{
-				Status = EPathFollowingStatus::Waiting;
+				SetStatus(EPathFollowingStatus::Waiting);
 				GetWorld()->GetTimerManager().SetTimer(WaitingForPathTimer, this, &UDsGrid_PathFollowingComponent::OnWaitingPathTimeout, WaitingTimeout);
 			}
 		}
@@ -193,13 +201,12 @@ void UDsGrid_PathFollowingComponent::OnWaitingPathTimeout()
 
 void UDsGrid_PathFollowingComponent::AbortMove(const UObject& Instigator, FPathFollowingResultFlags::Type AbortFlags, FAIRequestID RequestID, EPathFollowingVelocityMode VelocityMode)
 {
-	// Empty because we don't want Abortmove immediately between two tiles
-	//Super::AbortMove(Instigator, AbortFlags, RequestID, VelocityMode);
+	Super::AbortMove(Instigator, AbortFlags, RequestID, VelocityMode);
 }
 
 bool UDsGrid_PathFollowingComponent::DeterminePathStatus()
 {
-	if (Status == EPathFollowingStatus::Paused || Status == EPathFollowingStatus::Idle)
+	if (GetStatus() == EPathFollowingStatus::Paused || GetStatus() == EPathFollowingStatus::Idle)
 		return false;
 
 	ADsAIController* AI = Cast<ADsAIController>(GetOwner());
@@ -208,51 +215,49 @@ bool UDsGrid_PathFollowingComponent::DeterminePathStatus()
 			PauseMove(GetCurrentRequestId(), EPathFollowingVelocityMode::Keep);
 		}
 
-		if (Status == EPathFollowingStatus::Paused)
+		if (GetStatus() == EPathFollowingStatus::Paused)
 			return false;
 	}
 
 	return true;
 }
 
-void UDsGrid_PathFollowingComponent::OnPathFinished(const FPathFollowingResult & Result)
+void UDsGrid_PathFollowingComponent::OnPathFinished(const FPathFollowingResult& Result)
 {
 	Super::OnPathFinished(Result);
 
 	ADsAIController* AI = Cast<ADsAIController>(GetOwner());
 	if (AI) {
-		AI->OnPathFinished();
+		AI->OnPathFinished(Result.Code);
 	}
-
 }
 
 void UDsGrid_PathFollowingComponent::UpdatePathSegment()
 {
-	auto LLogBlockHelper = [&](AActor* LogOwner, UNavMovementComponent* MoveComp, float RadiusPct, float HeightPct, const FVector& SegmentStart, const FVector& SegmentEnd) -> void
-	{
-		#if ENABLE_VISUAL_LOG
-		if (MoveComp && LogOwner)
+	auto LLogBlockHelper = [&](AActor* LogOwner, INavMovementInterface* NavMoveInterface, float RadiusPct, float HeightPct, const FVector& SegmentStart, const FVector& SegmentEnd) -> void
 		{
-			const FVector AgentLocation = MoveComp->GetActorFeetLocation();
-			const FVector ToTarget = (SegmentEnd - AgentLocation);
-			const float SegmentDot = FVector::DotProduct(ToTarget.GetSafeNormal(), (SegmentEnd - SegmentStart).GetSafeNormal());
-			UE_VLOG(LogOwner, LogPathFollowing, Verbose, TEXT("[agent to segment end] dot [segment dir]: %f"), SegmentDot);
+#if ENABLE_VISUAL_LOG
+			if (NavMoveInterface && LogOwner)
+			{
+				const FVector AgentLocation = NavMoveInterface->GetFeetLocation();
+				const FVector ToTarget = (SegmentEnd - AgentLocation);
+				const FVector::FReal SegmentDot = FVector::DotProduct(ToTarget.GetSafeNormal(), (SegmentEnd - SegmentStart).GetSafeNormal());
+				UE_VLOG(LogOwner, LogPathFollowing, Verbose, TEXT("[agent to segment end] dot [segment dir]: %f"), SegmentDot);
 
-			float AgentRadius = 0.0f;
-			float AgentHalfHeight = 0.0f;
-			AActor* MovingAgent = MoveComp->GetOwner();
-			MovingAgent->GetSimpleCollisionCylinder(AgentRadius, AgentHalfHeight);
+				float AgentRadius = 0.0f;
+				float AgentHalfHeight = 0.0f;
+				NavMoveInterface->GetSimpleCollisionCylinder(AgentRadius, AgentHalfHeight);
 
-			const float Dist2D = ToTarget.Size2D();
-			UE_VLOG(LogOwner, LogPathFollowing, Verbose, TEXT("dist 2d: %f (agent radius: %f [%f])"), Dist2D, AgentRadius, AgentRadius * (1 + RadiusPct));
+				const FVector::FReal Dist2D = ToTarget.Size2D();
+				UE_VLOG(LogOwner, LogPathFollowing, Verbose, TEXT("dist 2d: %f (agent radius: %f [%f])"), Dist2D, AgentRadius, AgentRadius * (1 + RadiusPct));
 
-			const float ZDiff = FMath::Abs(ToTarget.Z);
-			UE_VLOG(LogOwner, LogPathFollowing, Verbose, TEXT("Z diff: %f (agent halfZ: %f [%f])"), ZDiff, AgentHalfHeight, AgentHalfHeight * (1 + HeightPct));
-		}
-		#endif // ENABLE_VISUAL_LOG
-	};
+				const FVector::FReal ZDiff = FMath::Abs(ToTarget.Z);
+				UE_VLOG(LogOwner, LogPathFollowing, Verbose, TEXT("Z diff: %f (agent halfZ: %f [%f])"), ZDiff, AgentHalfHeight, AgentHalfHeight * (1 + HeightPct));
+			}
+#endif // ENABLE_VISUAL_LOG
+		};
 
-	if ((Path.IsValid() == false) || (MovementComp == nullptr))
+	if ((Path.IsValid() == false) || !NavMovementInterface.IsValid())
 	{
 		UE_CVLOG(Path.IsValid() == false, this, LogPathFollowing, Log, TEXT("Aborting move due to not having a valid path object"));
 		OnPathFinished(FPathFollowingResult(EPathFollowingResult::Aborted, FPathFollowingResultFlags::InvalidPath));
@@ -267,9 +272,9 @@ void UDsGrid_PathFollowingComponent::UpdatePathSegment()
 	const FAIRequestID MoveRequestId = GetCurrentRequestId();
 
 	// if agent has control over its movement, check finish conditions
-	const FVector CurrentLocation = MovementComp->GetActorFeetLocation();
-	const bool bCanUpdateState = HasMovementAuthority();
-	if (bCanUpdateState && Status == EPathFollowingStatus::Moving)
+	const FVector CurrentLocation = NavMovementInterface->GetFeetLocation();
+	const bool bCanUpdateState = true;// HasMovementAuthority();
+	if (bCanUpdateState && GetStatus() == EPathFollowingStatus::Moving)
 	{
 		const int32 LastSegmentEndIndex = Path->GetPathPoints().Num() - 1;
 		const bool bFollowingLastSegment = (MoveSegmentStartIndex >= LastSegmentEndIndex);
@@ -316,7 +321,7 @@ void UDsGrid_PathFollowingComponent::UpdatePathSegment()
 	}
 
 	if (bCanUpdateState
-		&& Status == EPathFollowingStatus::Moving
+		&& GetStatus() == EPathFollowingStatus::Moving
 		// still the same move request
 		&& MoveRequestId == GetCurrentRequestId())
 	{
@@ -332,13 +337,13 @@ void UDsGrid_PathFollowingComponent::UpdatePathSegment()
 		{
 			if (Path->GetPathPoints().IsValidIndex(MoveSegmentEndIndex) && Path->GetPathPoints().IsValidIndex(MoveSegmentStartIndex))
 			{
-				LLogBlockHelper(GetOwner(), MovementComp, MinAgentRadiusPct, MinAgentHalfHeightPct,
+				LLogBlockHelper(GetOwner(), NavMovementInterface.Get(), MinAgentRadiusPct, MinAgentHalfHeightPct,
 					*Path->GetPathPointLocation(MoveSegmentStartIndex),
 					*Path->GetPathPointLocation(MoveSegmentEndIndex));
 			}
 			else
 			{
-				if ((GetOwner() != NULL) && (MovementComp != NULL))
+				if ((GetOwner() != NULL) && (NavMovementInterface != nullptr))
 				{
 					UE_VLOG(GetOwner(), LogPathFollowing, Verbose, TEXT("Path blocked, but move segment indices are not valid: start %d, end %d of %d"), MoveSegmentStartIndex, MoveSegmentEndIndex, Path->GetPathPoints().Num());
 				}
@@ -350,6 +355,8 @@ void UDsGrid_PathFollowingComponent::UpdatePathSegment()
 
 void UDsGrid_PathFollowingComponent::SetMoveSegment(int32 SegmentStartIndex)
 {
+	Super::SetMoveSegment(SegmentStartIndex);
+
 	MoveSegmentStartIndex = SegmentStartIndex;
 
 	int32 EndSegmentIndex = SegmentStartIndex + 1;
@@ -358,7 +365,7 @@ void UDsGrid_PathFollowingComponent::SetMoveSegment(int32 SegmentStartIndex)
 	{
 		EndSegmentIndex = DetermineCurrentTargetPathPoint(SegmentStartIndex);
 
-		MoveSegmentStartIndex = SegmentStartIndex;
+		//MoveSegmentStartIndex = SegmentStartIndex;
 		MoveSegmentEndIndex = EndSegmentIndex;
 		const FNavPathPoint& PathPt0 = PathInstance->GetPathPoints()[MoveSegmentStartIndex];
 
@@ -366,7 +373,8 @@ void UDsGrid_PathFollowingComponent::SetMoveSegment(int32 SegmentStartIndex)
 
 		CurrentDestination = PathInstance->GetPathPointLocation(MoveSegmentStartIndex);
 
-		const FVector SegmentStart = SegmentStartIndex == 0 ? MovementComp->GetActorFeetLocation() : *PathInstance->GetPathPointLocation(MoveSegmentStartIndex - 1);
+		const FVector SegmentStart = SegmentStartIndex == 0 ? NavMovementInterface->GetFeetLocation() : *PathInstance->GetPathPointLocation(MoveSegmentStartIndex - 1);
+		//const FVector SegmentStart = *PathInstance->GetPathPointLocation(MoveSegmentStartIndex);
 		FVector SegmentEnd = SegmentStartIndex == 0 ? PathPt0.Location : *CurrentDestination;
 
 		CurrentAcceptanceRadius = 0.0f;
@@ -407,24 +415,74 @@ void UDsGrid_PathFollowingComponent::OnSegmentFinished()
 	}
 }
 
+bool UDsGrid_PathFollowingComponent::HasReachedDestination(const FVector& CurrentLocation) const
+{
+	//return Super::HasReachedDestination(CurrentLocation);
+
+	const FVector Goal = GetCurrentTargetLocation();
+	const FVector FlatCurrent(CurrentLocation.X, CurrentLocation.Y, Goal.Z);
+	return Super::HasReachedDestination(FlatCurrent);
+
+	/*if (!HasValidPath())
+	{
+		return false;
+	}
+
+	FVector Destination = GetPathDestination();
+
+	float Distance2D = FVector::Dist2D(CurrentLocation, Destination);
+
+	return Distance2D <= AcceptanceRadius;*/
+
+	/*bool bXMatches = FMath::IsNearlyEqual(CurrentLocation.X, Destination.X, KINDA_SMALL_NUMBER);
+	bool bYMatches = FMath::IsNearlyEqual(CurrentLocation.Y, Destination.Y, KINDA_SMALL_NUMBER);
+
+	return bXMatches && bYMatches;*/
+}
+
+bool UDsGrid_PathFollowingComponent::HasReachedCurrentTarget(const FVector& CurrentLocation) const
+{
+	//return Super::HasReachedCurrentTarget(CurrentLocation);
+
+	const FVector Goal = GetCurrentTargetLocation();
+	const FVector FlatCurrent(CurrentLocation.X, CurrentLocation.Y, Goal.Z);
+	return Super::HasReachedCurrentTarget(FlatCurrent);
+
+	/*if (!HasValidPath())
+	{
+		return false;
+	}
+
+	FVector CurrentTarget = GetCurrentTargetLocation();
+
+	float Distance2D = FVector::Dist2D(CurrentLocation, CurrentTarget);
+
+	return Distance2D <= AcceptanceRadius;*/
+
+	/*bool bXMatches = FMath::IsNearlyEqual(CurrentLocation.X, CurrentTarget.X, KINDA_SMALL_NUMBER);
+	bool bYMatches = FMath::IsNearlyEqual(CurrentLocation.Y, CurrentTarget.Y, KINDA_SMALL_NUMBER);
+
+	return bXMatches && bYMatches;*/
+}
+
 void UDsGrid_PathFollowingComponent::PauseMove(FAIRequestID RequestID, EPathFollowingVelocityMode VelocityMode)
 {
-	UE_VLOG(GetOwner(), LogPathFollowing, Log, TEXT("PauseMove: RequestID(%u)"), RequestID);
-	if (Status == EPathFollowingStatus::Paused)
+	UE_VLOG(GetOwner(), LogPathFollowing, Log, TEXT("PauseMove: RequestID(%u)"), RequestID.GetID());
+	if (GetStatus() == EPathFollowingStatus::Paused)
 	{
 		return;
 	}
 
 	if (RequestID.IsEquivalent(GetCurrentRequestId()))
 	{
-		if ((VelocityMode == EPathFollowingVelocityMode::Reset) && MovementComp && HasMovementAuthority())
+		if ((VelocityMode == EPathFollowingVelocityMode::Reset) && NavMovementInterface.IsValid() && HasMovementAuthority())
 		{
-			MovementComp->StopMovementKeepPathing();
+			NavMovementInterface->StopMovementKeepPathing();
 		}
 
-		LocationWhenPaused = MovementComp ? MovementComp->GetActorFeetLocation() : FVector::ZeroVector;
+		LocationWhenPaused = NavMovementInterface.IsValid() ? NavMovementInterface->GetFeetLocation() : FVector::ZeroVector;
 		PathTimeWhenPaused = Path.IsValid() ? Path->GetTimeStamp() : 0.0f;
-		Status = EPathFollowingStatus::Paused;
+		SetStatus(EPathFollowingStatus::Paused);
 
 		UpdateMoveFocus();
 	}
@@ -434,10 +492,11 @@ void UDsGrid_PathFollowingComponent::ResumeMove(FAIRequestID RequestID)
 {
 	if (RequestID.IsEquivalent(GetCurrentRequestId()) && RequestID.IsValid())
 	{
-		UE_VLOG(GetOwner(), LogPathFollowing, Log, TEXT("ResumeMove: RequestID(%u)"), RequestID);
-		if (Path.IsValid() || Path->GetPathPoints().Num() > 0) {
-			Status = EPathFollowingStatus::Moving;
-			
+		UE_VLOG(GetOwner(), LogPathFollowing, Log, TEXT("ResumeMove: RequestID(%u)"), RequestID.GetID());
+		if (Path.IsValid() || Path->GetPathPoints().Num() > 0)
+		{
+			SetStatus(EPathFollowingStatus::Moving);
+
 			SetMoveSegment(MoveSegmentStartIndex + 1);
 			UpdateMoveFocus();
 		}
@@ -448,7 +507,7 @@ void UDsGrid_PathFollowingComponent::ResumeMove(FAIRequestID RequestID)
 	}
 	else
 	{
-		UE_VLOG(GetOwner(), LogPathFollowing, Log, TEXT("ResumeMove: RequestID(%u) is neither \'AnyRequest\' not CurrentRequestId(%u). Ignoring."), RequestID, GetCurrentRequestId());
+		UE_VLOG(GetOwner(), LogPathFollowing, Log, TEXT("ResumeMove: RequestID(%u) is neither \'AnyRequest\' not CurrentRequestId(%u). Ignoring."), RequestID.GetID(), GetCurrentRequestId().GetID());
 	}
 }
 
