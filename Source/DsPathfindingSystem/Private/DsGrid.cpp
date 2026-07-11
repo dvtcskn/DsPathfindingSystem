@@ -33,13 +33,10 @@ ADsGrid::ADsGrid()
 	, TileOffset(FVector2D(0.0, 0.0))
 	, TileScale(FVector2D(1.0, 1.0))
 	, bSquareGridDiagonalAllowed(false)
-	, HeuristicFunction(EGridHeuristicFunction::Octile)
 {
 	Scene = CreateDefaultSubobject<USceneComponent>(TEXT("USceneComponent"));
 	Scene->SetMobility(EComponentMobility::Static);
 	RootComponent = Scene;
-
-	bReplicates = true;
 }
 
 void ADsGrid::BeginPlay()
@@ -135,7 +132,7 @@ bool ADsGrid::Resize(int32 NewSizeX, int32 NewSizeY)
 	return true;
 }
 
-FSearchResult ADsGrid::AStarSearch(int32 StartIndex, int32 EndIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation) const
+FSearchResult ADsGrid::AStarSearch(int32 StartIndex, int32 EndIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation, EGridHeuristicFunction HeuristicFunction) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_ASTARSEARCH);
 
@@ -286,7 +283,7 @@ FSearchResult ADsGrid::AStarSearch(int32 StartIndex, int32 EndIndex, FAStarPrefe
 
 			if (!NextNode.Closed)
 			{
-				float TraversalCost = (CurrentNode.TraversalCost + GetHeuristic(Instances[CurrentIndex].Location, Instances[Tile.Key].Location)) + (Preferences.bOverrideNodeCostToOne ? 1.0f : ((Tile.Value.NodeCost * Tile.Value.NodeCostScale) * NodeCostScale));
+				float TraversalCost = (CurrentNode.TraversalCost + GetHeuristic(HeuristicFunction, Instances[CurrentIndex].Location, Instances[Tile.Key].Location)) + (Preferences.bOverrideNodeCostToOne ? 1.0f : ((Tile.Value.NodeCost * Tile.Value.NodeCostScale) * NodeCostScale));
 
 				auto PredicateIndex = [&](const FANode fCostH) {return fCostH.OpenSetIndex == Tile.Key; };
 
@@ -298,7 +295,7 @@ FSearchResult ADsGrid::AStarSearch(int32 StartIndex, int32 EndIndex, FAStarPrefe
 					NextNode.NodeCostCount = CurrentNode.NodeCostCount + (Preferences.bOverrideNodeCostToOne ? 1.0f : Tile.Value.NodeCost);
 					NextNode.parentCount = CurrentNode.parentCount + 1;
 					NextNode.OpenSetIndex = Tile.Key;
-					NextNode.HeuristicCost = GetHeuristic(Instances[Tile.Key].Location, Instances[EndIndex].Location);	// NodePredicate
+					NextNode.HeuristicCost = GetHeuristic(HeuristicFunction, Instances[Tile.Key].Location, Instances[EndIndex].Location);	// NodePredicate
 					NextNode.TotalCost = NextNode.TraversalCost + NextNode.HeuristicCost;	// NodePredicate
 
 					if (Preferences.TotalNodeCostLimit >= 0 && NextNode.TotalCost > Preferences.TotalNodeCostLimit)
@@ -528,7 +525,7 @@ FSearchResult ADsGrid::PathSearchAtRange(int32 StartIndex, int32 AtRange, FAStar
 	return Result;
 }
 
-FSearchResult ADsGrid::RetracePathEx(int32 StartIndex, int32 EndIndex, FSearchResult StructData, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter) const
+FSearchResult ADsGrid::RetracePath(int32 StartIndex, int32 EndIndex, FSearchResult StructData, bool bStopAtNeighborLocation) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_ReTracePath);
 
@@ -646,7 +643,7 @@ FSearchResult ADsGrid::RetracePathEx(int32 StartIndex, int32 EndIndex, FSearchRe
 		for (int32 NeighborIdx : Neighbors)
 		{
 			// Skip invalid neighbors
-			if (!StructData.Parents.Contains(NeighborIdx) || NeighborIndexesToFilter.Contains(NeighborIdx))
+			if (!StructData.Parents.Contains(NeighborIdx) /*|| NeighborIndexesToFilter.Contains(NeighborIdx)*/)
 			{
 				continue;
 			}
@@ -889,7 +886,7 @@ FSearchResult ADsGrid::PathSearchAtRange(int32 StartIndex, int32 AtRange, FAStar
 	return Result;
 }
 
-FSearchResult ADsGrid::RetracePathEx(int32 StartIndex, int32 EndIndex, FSearchResult StructData, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter) const
+FSearchResult ADsGrid::RetracePath(int32 StartIndex, int32 EndIndex, FSearchResult StructData, bool bStopAtNeighborLocation) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_ReTracePath);
 
@@ -969,7 +966,7 @@ FSearchResult ADsGrid::RetracePathEx(int32 StartIndex, int32 EndIndex, FSearchRe
 		TArray<FSearchResult> SearchResults;
 		for (const auto& End : EndIndexes)
 		{
-			if (!StructData.PathIndexes.Contains(End) || NeighborIndexesToFilter.Contains(End))
+			if (!StructData.PathIndexes.Contains(End) /*|| NeighborIndexesToFilter.Contains(End)*/)
 				continue;
 			FSearchResult SearchResult = Retrace(StartIndex, End, StructData);
 			if (SearchResult.ResultState == ESearchResult::SearchSuccess)
@@ -1480,11 +1477,6 @@ bool ADsGrid::SetTileZ(int32 Index, float Z)
 	Instances[Index].Location.Z = Z;
 
 	return true;
-}
-
-void ADsGrid::SetHeuristicFunction(EGridHeuristicFunction NewFunction)
-{
-	HeuristicFunction = NewFunction;
 }
 
 int32 ADsGrid::GetIndexRow(int32 Index) const
