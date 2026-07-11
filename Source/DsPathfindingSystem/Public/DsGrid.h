@@ -127,12 +127,12 @@ struct DSPATHFINDINGSYSTEM_API FSearchResult
 		, bStopAtNeighborLocation(false)
 		, ResultState(ESearchResult::SearchFail)
 	{};
-	FSearchResult(ESearchResult ResultState)
+	FSearchResult(ESearchResult NewResultState)
 		: TotalNodeCost(NULL)
 		, PathLength(NULL)
 		, EndPoint(-1)
 		, bStopAtNeighborLocation(false)
-		, ResultState(ResultState)
+		, ResultState(NewResultState)
 	{};
 
 	int32 GetLastIndex() const
@@ -484,7 +484,7 @@ public:
 		return D * (dx + dy) + (FMath::Sqrt(2.0f) - 2 * D) * FMath::Min(dx, dy);
 	}
 
-	FORCEINLINE float GetHeuristic(FVector FirstVector, FVector SecondVector, float D = 1.0f) const
+	FORCEINLINE float GetHeuristic(EGridHeuristicFunction HeuristicFunction, FVector FirstVector, FVector SecondVector, float D = 1.0f) const
 	{
 		switch (HeuristicFunction)
 		{
@@ -503,12 +503,12 @@ public:
 	* Main pathfinding function
 	*/
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
-	FSearchResult AStarSearch(int32 StartIndex, int32 EndIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false) const;
+	FSearchResult AStarSearch(int32 StartIndex, int32 EndIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false, EGridHeuristicFunction HeuristicFunction = EGridHeuristicFunction::Octile) const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar")
-	inline FSearchResult AStarSearch_Pure(int32 StartIndex, int32 EndIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false) const
+	inline FSearchResult AStarSearch_Pure(int32 StartIndex, int32 EndIndex, FAStarPreferences Preferences, bool bStopAtNeighborLocation = false, EGridHeuristicFunction HeuristicFunction = EGridHeuristicFunction::Octile) const
 	{
-		return AStarSearch(StartIndex, EndIndex, Preferences, bStopAtNeighborLocation);
+		return AStarSearch(StartIndex, EndIndex, Preferences, bStopAtNeighborLocation, HeuristicFunction);
 	}
 
 	/*
@@ -526,24 +526,17 @@ public:
 	/*
 	* For PathSearchAtRange function reconstructing paths
 	*/
-	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar", meta = (AutoCreateRefTerm = "NeighborIndexesToFilter"))
-	inline FSearchResult RetracePath(int32 StartIndex, int32 EndIndex, FSearchResult StructData, bool bStopAtNeighborLocation = false) const
-	{
-		return RetracePathEx(StartIndex, EndIndex, StructData, bStopAtNeighborLocation, TArray<int32>());
-	}
+	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar")
+	FSearchResult RetracePath(int32 StartIndex, int32 EndIndex, FSearchResult StructData, bool bStopAtNeighborLocation = false) const;
 
-	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|AStar", meta = (AutoCreateRefTerm = "NeighborIndexesToFilter"))
-	FSearchResult RetracePathEx(int32 StartIndex, int32 EndIndex, FSearchResult StructData, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter) const;
-
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar", meta = (AutoCreateRefTerm = "NeighborIndexesToFilter"))
-	inline FSearchResult RetracePath_Pure(int32 StartIndex, int32 EndIndex, FSearchResult StructData, bool bStopAtNeighborLocation, TArray<int32> NeighborIndexesToFilter) const
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|AStar")
+	inline FSearchResult RetracePath_Pure(int32 StartIndex, int32 EndIndex, FSearchResult StructData, bool bStopAtNeighborLocation) const
 	{
-		return RetracePathEx(StartIndex, EndIndex, StructData, bStopAtNeighborLocation, NeighborIndexesToFilter);
+		return RetracePath(StartIndex, EndIndex, StructData, bStopAtNeighborLocation);
 	}
 
 	/*
 	* Get Node locations from grid using sphere selection
-	* UHierarchicalInstancedStaticMeshComponent::GetInstancesOverlappingSphere()
 	* BP pure
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
@@ -551,8 +544,6 @@ public:
 
 	/*
 	* Get Node locations from grid using box selection
-	* box auto generated
-	* UHierarchicalInstancedStaticMeshComponent::GetInstancesOverlappingBox()
 	* BP pure
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
@@ -562,7 +553,6 @@ public:
 	bool IsValidIndex(int32 Index) const;
 	/*
 	* Get Node location from grid
-	* UHierarchicalInstancedStaticMeshComponent::GetInstanceTransform()
 	* BP only (pure)
 	*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DsPathfindingSystem|Grid")
@@ -657,11 +647,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Grid")
 	bool SetTileZ(int32 Index, float Z);
 
-	UFUNCTION(BlueprintCallable, Category = "DsPathfindingSystem|Logic")
-	void SetHeuristicFunction(EGridHeuristicFunction NewFunction);
-	UFUNCTION(BlueprintPure, Category = "DsPathfindingSystem|Logic")
-	EGridHeuristicFunction GetHeuristicFunction() const { return HeuristicFunction; }
-
 protected:
 	virtual void OnTileAttributeChanged(const FGridNode& Node) {}
 	virtual void OnTilePropertyMapSet() {}
@@ -716,5 +701,4 @@ private:
 	FVector2D TileScale;
 	TMap<int32, FGridNode> Instances;
 	bool bSquareGridDiagonalAllowed;
-	EGridHeuristicFunction HeuristicFunction;
 };
